@@ -13,7 +13,7 @@ MVP 기간에는 PRD와 OpenSpec을 함께 쓴다. 같은 내용을 두 곳에 �
 ## 흐름
 
 1. PRD에 기능 ID(F-001 등), 유저 스토리, 수용 기준을 쓴다.
-2. 기능 ID마다 OpenSpec change를 만든다(`/opsx:propose`). 기능 하나에 change 하나가 기본이고, 함께 구현해야 하는 기능은 한 change로 묶어도 된다.
+2. 기술 스택과 아키텍처가 정해진 뒤(MVP에서는 STEP 5 이후), 기능 ID마다 OpenSpec change를 만든다(`/opsx:propose`). change의 설계에 기술 스택이 들어가기 때문이다. 기능 하나에 change 하나가 기본이고, 함께 구현해야 하는 기능은 한 change로 묶어도 된다.
 3. change를 구현한다(`/opsx:apply`).
 4. 구현과 검증이 끝나면 archive한다(`/opsx:archive`). 이때 change의 스펙이 `openspec/specs/`에 합쳐진다.
 
