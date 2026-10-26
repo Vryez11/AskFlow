@@ -19,6 +19,15 @@ schema: spec-driven
 #     tasks:
 #       - Break tasks into chunks of max 2 hours
 
+# PRD와 OpenSpec을 기능 ID로 잇는 규칙. 자세한 내용은 conventions/spec.md
+rules:
+  proposal:
+    - '이 change가 맡는 PRD 기능 ID(예: F-003)를 맨 앞에 적는다. 기능 ID는 docs/mvp/04-prd.md를 따른다'
+    - 'PRD에 없는 기능이면 change를 만들기 전에 PRD부터 고쳐야 한다고 알린다'
+  specs:
+    - '요구사항 제목 끝에 관련 기능 ID를 괄호로 붙인다. 예) "### Requirement: 읽기 전용 실행 (F-003)"'
+    - '목표, 성공 지표, 우선순위는 쓰지 않고 PRD를 가리킨다'
+
 # Per-operation guidance (optional)
 # Add advisory guidance for how apply and archive work should be conducted.
 # This is separate from artifact rules above.
