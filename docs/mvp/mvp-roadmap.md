@@ -22,7 +22,7 @@ AskFlow는 자연어로 요청하면 TextToSQL로 데이터를 뽑아, 정형 �
 |---|---|---|
 | 1 아이디어 검증 | [`docs/mvp/01-idea-validation.md`](01-idea-validation.md) | 초안 완료 |
 | 2 기획서 | [`docs/mvp/02-service-plan.md`](02-service-plan.md) | 초안 완료 |
-| 3 IA | `docs/mvp/03-ia.md` (Mermaid) | 예정 |
+| 3 IA | [`docs/mvp/03-ia.md`](03-ia.md) (Mermaid) | 초안 완료 |
 | 4 PRD | `docs/mvp/04-prd.md`, 요약은 루트 `CLAUDE.md` | 예정 |
 | 5 아키텍처 | `docs/mvp/05-architecture.md` (Mermaid) | 예정 |
 | 6 디자인 토큰 | `web/design-tokens.json` | 예정 |
@@ -48,8 +48,9 @@ AskFlow는 자연어로 요청하면 TextToSQL로 데이터를 뽑아, 정형 �
 **데이터셋**
 
 - 검증용 데이터셋은 [Olist 브라질 이커머스 공개 데이터](https://www.kaggle.com/datasets/olistbr/brazilian-ecommerce)다. 실제 거래를 익명화한 주문 약 10만 건(2016~2018)이고, 주문·주문 상품·결제·리뷰·고객·판매자·상품 등 9개 테이블로 되어 있다. 판매자가 중소 사업자라 타겟과 맞는다.
-- 라이선스가 CC BY-NC-SA 4.0(비상업)이다. 원본은 레포에 커밋하지 않고 다운로드 스크립트로 받는다. 상용 서비스의 데모 데이터로는 쓰지 않는다.
+- 라이선스가 CC BY-NC-SA 4.0(비상업)이다. 원본은 레포에 커밋하지 않고 다운로드 스크립트로 `data/raw/`에 받는다(`.gitignore`로 제외). 상용 서비스의 데모 데이터로는 쓰지 않는다.
 - 개발용 MySQL에 시드 스크립트로 넣고 MySQL 커넥터로 붙인다. 파일럿인 LIT도 MySQL이라 같은 경로를 검증하게 된다.
+- 데이터가 2016~2018년이라 "지난 7일" 같은 요청을 하면 결과가 비어 버린다. 시드 스크립트에서 날짜를 최근으로 옮기거나, "오늘"로 볼 기준 날짜를 설정으로 둔다. 방식은 STEP 5 아키텍처에서 정한다.
 - 도시명과 상품 카테고리 값이 포르투갈어라, 한국어 질문과 값을 잇는 용어 사전이 필요하다. MVP에서는 용어 사전을 설정 파일로 넣고, 가설 H5를 시험하는 기회로 쓴다.
 - Olist로 검증한 뒤 파일럿(LIT, Nyummy, 주변 창업 프로젝트) 데이터로 넓힌다.
 
@@ -93,6 +94,6 @@ H1~H6과 검증 방법은 [STEP 1 검증 보고서](01-idea-validation.md#8-mvp�
 
 ## 다음 할 일
 
-1. STEP 3 IA를 그린다. 화면 목록과 기획서 시나리오 1~3의 흐름을 Mermaid로 정리한다.
+1. STEP 4 PRD를 쓴다. IA의 화면과 플로우를 기준으로 Must 5개의 유저 스토리와 수용 기준을 정한다.
 2. Olist로 평가 세트(질문 30개, 대시보드·보고서 요청 10개)를 만든다.
 3. 기술 스택과 LLM을 정한다.
