@@ -35,7 +35,7 @@
 | pipeline | 생성 파이프라인 (요청 해석과 계획 → SQL 생성 → 검증 → 실행 → 대시보드·보고서 구성) |
 | eval | 정확도 평가 세트와 평가 스크립트 |
 | infra | Docker, 배포, CI |
-| 문서 이름 | docs 커밋일 때: `prd`, `roadmap`, `ia`, `architecture` 등 |
+| 문서 이름 | docs 커밋일 때: `prd`, `roadmap`, `ia`, `architecture` 등. OpenSpec 문서는 `spec` ([스펙 관리 규칙](spec.md)) |
 
 ## 예시
 
