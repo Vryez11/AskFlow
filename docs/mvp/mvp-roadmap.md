@@ -23,8 +23,8 @@ AskFlow는 자연어로 요청하면 TextToSQL로 데이터를 뽑아, 정형 �
 | 1 아이디어 검증 | [`docs/mvp/01-idea-validation.md`](01-idea-validation.md) | 초안 완료 |
 | 2 기획서 | [`docs/mvp/02-service-plan.md`](02-service-plan.md) | 초안 완료 |
 | 3 IA | [`docs/mvp/03-ia.md`](03-ia.md) (Mermaid) | 초안 완료 |
-| 4 PRD | `docs/mvp/04-prd.md`, 기능 ID별 OpenSpec change | 예정 |
-| 5 아키텍처 | `docs/mvp/05-architecture.md` (Mermaid) | 예정 |
+| 4 PRD | [`docs/mvp/04-prd.md`](04-prd.md) | 초안 완료 |
+| 5 아키텍처 | `docs/mvp/05-architecture.md` (Mermaid), 이어서 기능 ID별 OpenSpec change | 예정 |
 | 6 디자인 토큰 | `web/design-tokens.json` | 예정 |
 | 7 MVP | OpenSpec change 구현(코드), `docs/mvp/07-mvp-test.md` | 예정 |
 | 8 중간 평가 후 개선 | 각 문서 v2, `docs/mvp/08-changelog.md` | 중간 평가 후 |
@@ -40,7 +40,7 @@ AskFlow는 자연어로 요청하면 TextToSQL로 데이터를 뽑아, 정형 �
 4. **디자인 토큰은 최소로 한다.** shadcn/ui 기본 토큰에 primary 색만 정하고, 대시보드와 보고서 화면에 필요한 컴포넌트만 만든다.
 5. **워커는 MVP에서 분리하지 않는다.** 대시보드·보고서 생성은 API 안에서 동기로 처리하되, 파이프라인을 별도 모듈로 두어 나중에 워커로 옮기기 쉽게 한다. 레포는 하나로 두고 `api/`, `worker/`, `web/` 폴더로 나눈다.
 6. **데이터 소스는 커넥터 인터페이스로 둔다.** 중소기업의 데이터는 DB, 엑셀, 구글 시트에 흩어져 있다. 데이터를 가져오는 부분을 인터페이스로 정하고 MVP에서는 MySQL 커넥터 하나만 구현한다. 나머지는 같은 인터페이스로 하나씩 붙인다.
-7. **기능 명세와 구현은 OpenSpec으로 관리한다.** 가이드는 PRD를 `CLAUDE.md`에 요약하고 Claude Code로 바로 구현하지만, AskFlow는 PRD의 기능 ID마다 OpenSpec change를 만들어 제안 → 구현(`/opsx:apply`) → archive 순서로 진행한다. PRD는 MVP 범위를, OpenSpec은 프로젝트 전체의 동작 스펙을 맡는다. 역할과 동기화 규칙은 [conventions/spec.md](../../conventions/spec.md)에 있다.
+7. **기능 명세와 구현은 OpenSpec으로 관리한다.** 가이드는 PRD를 `CLAUDE.md`에 요약하고 Claude Code로 바로 구현하지만, AskFlow는 PRD의 기능 ID마다 OpenSpec change를 만들어 제안 → 구현(`/opsx:apply`) → archive 순서로 진행한다. change의 설계에 기술 스택이 들어가므로 change는 STEP 5 아키텍처를 정한 뒤 만든다. PRD는 MVP 범위를, OpenSpec은 프로젝트 전체의 동작 스펙을 맡는다. 역할과 동기화 규칙은 [conventions/spec.md](../../conventions/spec.md)에 있다.
 
 ## 실제 데이터로 검증한다
 
@@ -63,12 +63,12 @@ AskFlow는 자연어로 요청하면 TextToSQL로 데이터를 뽑아, 정형 �
 
 ## MVP 범위
 
-기능 범위(Must, Should, Could, Won't)의 기준 문서는 [STEP 2 기획서 5장](02-service-plan.md#5-핵심-기능-moscow)이다. STEP 4 PRD에서 수용 기준과 함께 확정한다.
+Must 기능과 수용 기준, 제외 범위의 기준 문서는 [STEP 4 PRD](04-prd.md)다. Should, Could 목록은 [STEP 2 기획서 5장](02-service-plan.md#5-핵심-기능-moscow)에 있다.
 가이드 원칙대로 Must는 다섯 개다.
 
 - F-001 요청 해석과 계획
 - F-002 SQL 생성
-- F-003 SQL 안전 실행
+- F-003 SQL 안전 실행과 데이터 연결
 - F-004 비정형 보고서
 - F-005 정형 대시보드
 
@@ -95,6 +95,6 @@ H1~H6과 검증 방법은 [STEP 1 검증 보고서](01-idea-validation.md#8-mvp�
 
 ## 다음 할 일
 
-1. STEP 4 PRD를 쓴다. IA의 화면과 플로우를 기준으로 Must 5개의 유저 스토리와 수용 기준을 정하고, 기능 ID마다 OpenSpec change를 만든다.
-2. Olist로 평가 세트(질문 30개, 대시보드·보고서 요청 10개)를 만든다.
-3. 기술 스택과 LLM을 정한다.
+1. STEP 5 아키텍처를 정한다. 기술 스택, LLM, Olist 날짜 처리 방식을 결정하고 Mermaid로 그린다.
+2. PRD 7장의 순서대로 기능 ID마다 OpenSpec change를 만든다(`/opsx:propose`).
+3. Olist로 평가 세트(질문 30개, 대시보드·보고서 요청 10개)를 만든다.
