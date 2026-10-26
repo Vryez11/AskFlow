@@ -32,7 +32,7 @@
 | api | API 서버 |
 | worker | 워커 서버 |
 | web | 프론트엔드 |
-| pipeline | TextToSQL 파이프라인 (스키마 → SQL 생성 → 검증 → 실행) |
+| pipeline | 생성 파이프라인 (요청 해석과 계획 → SQL 생성 → 검증 → 실행 → 대시보드·보고서 구성) |
 | eval | 정확도 평가 세트와 평가 스크립트 |
 | infra | Docker, 배포, CI |
 | 문서 이름 | docs 커밋일 때: `prd`, `roadmap`, `ia`, `architecture` 등 |
@@ -40,9 +40,9 @@
 ## 예시
 
 ```
-feat(pipeline): 질문과 DB 스키마로 SELECT 문을 생성한다 (F-001)
-fix(api): LIMIT 없는 SQL이 테이블 전체를 읽던 문제를 고친다 (F-002)
-test(eval): 매출 데이터 대표 질문 30개와 정답 SQL을 추가한다
+feat(pipeline): 요청을 나눈 질문과 DB 스키마로 SELECT 문을 생성한다 (F-002)
+fix(api): LIMIT 없는 SQL이 테이블 전체를 읽던 문제를 고친다 (F-003)
+test(eval): Olist 대표 질문 30개와 정답 SQL을 추가한다
 docs(prd): Must 기능 5개의 수용 기준을 확정한다
 chore: api, worker, web 폴더 구조를 만든다
 ```
