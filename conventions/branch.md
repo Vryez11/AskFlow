@@ -47,7 +47,7 @@ gitGraph
 
 1. **change:** `develop`에서 `change/<change-id>`를 만든다. 구현, 검토, archive까지 이 브랜치에서 끝내고 `develop`으로 PR을 연다([하네스 규칙](harness.md)).
 2. **문서만 바꿀 때:** 브랜치 없이 `develop`에 바로 커밋한다.
-3. **릴리스:** `develop` → `main` PR을 열고, CI와 평가 세트가 통과하면 merge한다. merge 뒤 `main`에 태그를 붙인다.
+3. **릴리스:** `develop` → `main` PR을 릴리스 템플릿으로 열고(`gh pr create --base main --template release.md`), CI와 평가 세트가 통과하면 merge한다. merge 뒤 `main`에 태그를 붙인다.
 4. **hotfix:** `main`에서 만들어 `main`에 merge하고 패치 태그를 붙인 뒤, 같은 브랜치를 `develop`에도 merge한다.
 5. **직접 커밋 금지:** `main`에는 직접 커밋하지 않는다. 릴리스와 hotfix PR로만 바뀐다. `develop`에는 문서 커밋만 직접 한다.
 6. **병합 방식:** squash하지 않고 merge commit으로 합친다. Ralph가 작업마다 남긴 커밋을 보존해 작업 단위로 되돌릴 수 있게 한다.
