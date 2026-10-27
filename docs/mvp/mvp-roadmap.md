@@ -89,6 +89,7 @@ H1~H6과 검증 방법은 [STEP 1 검증 보고서](01-idea-validation.md#8-mvp�
 | 검증용 데이터셋 | Olist 브라질 이커머스 공개 데이터 | 2026-10-26 |
 | 첫 데이터 소스 커넥터 | MySQL | 2026-10-26 |
 | 개발 흐름 | OpenSpec 스펙을 기준으로, 하네스 6가지가 환경과 검사를 갖추고 루프 3겹(안쪽, Ralph 바깥 루프, 검토)이 구현하는 흐름. Ralph는 OpenSpec tasks.md를 읽는다 | 2026-10-27 |
+| 브랜치 | `main`은 배포 가능, `develop`에서 개발, change마다 `change/<change-id>` ([브랜치 컨벤션](../../conventions/branch.md)) | 2026-10-27 |
 
 ## 결정이 필요한 것
 
