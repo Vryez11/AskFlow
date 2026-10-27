@@ -10,13 +10,16 @@ CLAUDE.local.md
 # 검증용 원본 데이터 (Olist는 비상업 라이선스라 커밋하지 않는다)
 data/raw/
 
+# 파이프라인 실행 기록 (하네스 디버깅용)
+logs/
+
 # 의존성과 빌드 결과
 node_modules/
 dist/
 build/
 coverage/
-__pycache__/
-.venv/
+.gradle/
+.kotlin/
 
 # OS와 에디터
 .DS_Store
