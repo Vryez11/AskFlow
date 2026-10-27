@@ -24,15 +24,17 @@ AskFlow는 자연어로 요청하면 TextToSQL로 데이터를 뽑아, 정형 �
 | 2 기획서 | [`docs/mvp/02-service-plan.md`](02-service-plan.md) | 초안 완료 |
 | 3 IA | [`docs/mvp/03-ia.md`](03-ia.md) (Mermaid) | 초안 완료 |
 | 4 PRD | [`docs/mvp/04-prd.md`](04-prd.md) | 초안 완료 |
-| 5 아키텍처 | `docs/mvp/05-architecture.md` (Mermaid), 이어서 기능 ID별 OpenSpec change | 예정 |
+| 5 아키텍처 | `docs/mvp/05-architecture.md` (Mermaid) | 예정 |
+| 5-1 하네스 구성 | `CLAUDE.md`, 권한·훅, CI, 테스트·평가·재현 도구 ([하네스 규칙](../../conventions/harness.md) 5장 채우기) | 예정 |
+| 5-2 OpenSpec change | PRD 7장 순서대로 기능 ID별 change | 예정 |
 | 6 디자인 토큰 | `web/design-tokens.json` | 예정 |
-| 7 MVP | OpenSpec change 구현(코드), `docs/mvp/07-mvp-test.md` | 예정 |
+| 7 MVP | Ralph 루프와 하네스로 change 구현(코드), `docs/mvp/07-mvp-test.md` | 예정 |
 | 8 중간 평가 후 개선 | 각 문서 v2, `docs/mvp/08-changelog.md` | 중간 평가 후 |
 | 9 실제 개발 | 코드, 테스트, 배포 URL, `openspec/specs/` | MVP 이후 |
 
 ## 빠르게 가기 위한 조정
 
-가이드의 흐름은 그대로 따르되, AskFlow 특성에 맞게 일곱 군데를 바꾼다.
+가이드의 흐름은 그대로 따르되, AskFlow 특성에 맞게 여덟 군데를 바꾼다.
 
 1. **STEP 1~2는 결정에 필요한 만큼만 쓴다.** 목적은 핵심 가설과 Must 기능을 정하는 것이다. 검증 보고서는 결론, 차별점, 가설을 중심으로 쓰고, 경쟁 서비스는 주요한 것만 본다.
 2. **다이어그램은 레포 안 Mermaid로 그린다.** IA와 아키텍처를 Mermaid로 `docs/mvp/`에 두면 GitHub이 바로 그려 주고 Git diff로 변경을 추적할 수 있다. 가이드가 Eraser DSL의 장점으로 든 것과 같다. 발표용 그림이 필요할 때만 Eraser.io나 Whimsical을 쓴다.
@@ -41,6 +43,7 @@ AskFlow는 자연어로 요청하면 TextToSQL로 데이터를 뽑아, 정형 �
 5. **워커는 MVP에서 분리하지 않는다.** 대시보드·보고서 생성은 API 안에서 동기로 처리하되, 파이프라인을 별도 모듈로 두어 나중에 워커로 옮기기 쉽게 한다. 레포는 하나로 두고 `api/`, `worker/`, `web/` 폴더로 나눈다.
 6. **데이터 소스는 커넥터 인터페이스로 둔다.** 중소기업의 데이터는 DB, 엑셀, 구글 시트에 흩어져 있다. 데이터를 가져오는 부분을 인터페이스로 정하고 MVP에서는 MySQL 커넥터 하나만 구현한다. 나머지는 같은 인터페이스로 하나씩 붙인다.
 7. **기능 명세와 구현은 OpenSpec으로 관리한다.** 가이드는 PRD를 `CLAUDE.md`에 요약하고 Claude Code로 바로 구현하지만, AskFlow는 PRD의 기능 ID마다 OpenSpec change를 만들어 제안 → 구현(`/opsx:apply`) → archive 순서로 진행한다. change의 설계에 기술 스택이 들어가므로 change는 STEP 5 아키텍처를 정한 뒤 만든다. PRD는 MVP 범위를, OpenSpec은 프로젝트 전체의 동작 스펙을 맡는다. 역할과 동기화 규칙은 [conventions/spec.md](../../conventions/spec.md)에 있다.
+8. **하네스와 루프로 AI에게 맡긴다.** 가이드는 Claude Code를 쓸 때의 주의사항(기능 하나씩 구현, 코드를 읽고 커밋, 보안 코드 검토)을 사람이 지키게 한다. AskFlow는 이를 자동화한다. 하네스(컨텍스트, 퍼미션, 검증, 도구, 서브에이전트·워크트리, 디버깅)가 일하는 환경과 검사를 갖추고, Ralph 루프가 OpenSpec tasks.md의 작업을 하나씩 구현하고, 구현과 분리된 리뷰어가 검토한다. 하네스는 기술 스택이 정해진 STEP 5 직후, 첫 구현 전에 구성한다. 규칙은 [conventions/harness.md](../../conventions/harness.md)에 있다.
 
 ## 실제 데이터로 검증한다
 
@@ -85,6 +88,7 @@ H1~H6과 검증 방법은 [STEP 1 검증 보고서](01-idea-validation.md#8-mvp�
 | 챗봇 | MVP 이후에 붙인다 | 2026-10-26 |
 | 검증용 데이터셋 | Olist 브라질 이커머스 공개 데이터 | 2026-10-26 |
 | 첫 데이터 소스 커넥터 | MySQL | 2026-10-26 |
+| 개발 흐름 | OpenSpec 스펙을 기준으로, 하네스 6가지가 환경과 검사를 갖추고 루프 3겹(안쪽, Ralph 바깥 루프, 검토)이 구현하는 흐름. Ralph는 OpenSpec tasks.md를 읽는다 | 2026-10-27 |
 
 ## 결정이 필요한 것
 
@@ -92,9 +96,11 @@ H1~H6과 검증 방법은 [STEP 1 검증 보고서](01-idea-validation.md#8-mvp�
 2. **LLM 공급자와 모델.**
 3. **일정:** 중간 평가 날짜에서 거꾸로 계산해 STEP 7 마감을 정한다.
 4. **팀 구성과 역할:** 팀 프로젝트라면 단계별 담당자.
+5. **하네스 공유:** 훅 설정이 든 `.claude/settings.json`을 커밋 대상으로 열지. 지금은 `.claude/` 전체를 제외하고 있어, 열지 않으면 팀원과 CI가 같은 훅을 쓰지 못한다. 하네스를 구성할 때(5-1) 정한다.
 
 ## 다음 할 일
 
 1. STEP 5 아키텍처를 정한다. 기술 스택, LLM, Olist 날짜 처리 방식을 결정하고 Mermaid로 그린다.
-2. PRD 7장의 순서대로 기능 ID마다 OpenSpec change를 만든다(`/opsx:propose`).
-3. Olist로 평가 세트(질문 30개, 대시보드·보고서 요청 10개)를 만든다.
+2. 하네스를 구성한다(5-1). `CLAUDE.md`, 권한·훅, CI, 테스트·평가·재현 도구를 갖추고 하네스 규칙 5장의 명령을 채운다.
+3. PRD 7장의 순서대로 기능 ID마다 OpenSpec change를 만든다(`/opsx:propose`).
+4. Olist로 평가 세트(질문 30개, 대시보드·보고서 요청 10개)를 만든다. F-002 change를 구현하기 전에 있어야 한다.
