@@ -14,8 +14,8 @@ MVP 기간에는 PRD와 OpenSpec을 함께 쓴다. 같은 내용을 두 곳에 �
 
 1. PRD에 기능 ID(F-001 등), 유저 스토리, 수용 기준을 쓴다.
 2. 기술 스택과 아키텍처가 정해진 뒤(MVP에서는 STEP 5 이후), 기능 ID마다 OpenSpec change를 만든다(`/opsx:propose`). change의 설계에 기술 스택이 들어가기 때문이다. 기능 하나에 change 하나가 기본이고, 함께 구현해야 하는 기능은 한 change로 묶어도 된다.
-3. change를 구현한다(`/opsx:apply`).
-4. 구현과 검증이 끝나면 archive한다(`/opsx:archive`). 이때 change의 스펙이 `openspec/specs/`에 합쳐진다.
+3. [하네스 규칙](harness.md)에 따라 구현한다. tasks.md의 작업을 Ralph 루프(`scripts/ralph/ralph.sh`)가 하나씩 처리하고, 대화하며 진행하고 싶으면 `/opsx:apply`를 쓴다.
+4. 하네스의 change 완료 조건을 채우면 archive한다(`/opsx:archive`). 이때 change의 스펙이 `openspec/specs/`에 합쳐진다.
 
 ## 동기화 규칙
 
