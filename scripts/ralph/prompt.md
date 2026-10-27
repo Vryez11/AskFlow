@@ -7,10 +7,10 @@
 
 ## 순서
 
-1. 규칙을 읽는다: `CLAUDE.md`(있으면), `conventions/harness.md`, `conventions/spec.md`, `conventions/commit.md`.
+1. 규칙을 읽는다: `CLAUDE.md`(있으면), `conventions/harness.md`, `conventions/spec.md`, `conventions/commit.md`, `conventions/branch.md`.
 2. change 문서를 읽는다: `openspec/changes/{{CHANGE_ID}}/`의 `proposal.md`, `design.md`, `specs/`, `tasks.md`. `openspec instructions apply --change {{CHANGE_ID}}`로 구현 지침도 확인한다.
 3. 진행 메모 `openspec/changes/{{CHANGE_ID}}/progress.md`를 읽는다. 맨 위 "알아 둘 패턴"부터 본다. 파일이 없으면 아래 형식으로 만든다.
-4. 지금 브랜치가 `change/{{CHANGE_ID}}`인지 확인한다. 아니면 `main`에서 만들거나 그 브랜치로 옮긴다.
+4. 지금 브랜치가 `change/{{CHANGE_ID}}`인지 확인한다. 아니면 그 브랜치로 옮기고, 없으면 `develop`에서 만든다(`conventions/branch.md`).
 5. `tasks.md`에서 체크되지 않은 첫 작업 하나를 고른다. 마지막 작업 묶음(검토와 change 완료 조건 확인)은 하지 않는다.
 6. 그 작업만 구현한다. 시나리오를 테스트로 옮기는 작업이면, 테스트가 실패하는 것까지 확인한다.
 7. 작업에 적힌 확인 방법과 자동 검사(`conventions/harness.md` 5장의 명령)를 돌리고, 통과할 때까지 고친다.
