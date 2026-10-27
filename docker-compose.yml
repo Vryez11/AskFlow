@@ -1,0 +1,21 @@
+# 로컬 개발용 MySQL. askflow(서비스 데이터)와 olist(분석 대상) 두 DB를 띄운다 (아키텍처 문서 11장)
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?.env에 MYSQL_ROOT_PASSWORD를 넣으세요}
+      ASKFLOW_DB_PASSWORD: ${ASKFLOW_DB_PASSWORD:?.env에 ASKFLOW_DB_PASSWORD를 넣으세요}
+      ASKFLOW_READER_PASSWORD: ${ASKFLOW_READER_PASSWORD:?.env에 ASKFLOW_READER_PASSWORD를 넣으세요}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/mysql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  mysql-data:

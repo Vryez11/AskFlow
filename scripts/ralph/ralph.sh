@@ -33,8 +33,9 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   echo ""
   echo "=== Ralph 반복 $i / $MAX_ITERATIONS ($CHANGE_ID)"
 
-  # 파일 수정은 허용하고, 셸 명령은 .claude/settings.json의 허용 목록 안에서만 쓴다
-  OUTPUT=$(claude --print --permission-mode acceptEdits "$PROMPT" 2>&1 | tee /dev/stderr) || true
+  # 파일 수정은 허용하고, 셸 명령은 .claude/settings.json의 허용 목록 안에서만 쓴다.
+  # ASKFLOW_RALPH=1이면 하네스 훅이 이미 있는 테스트 수정을 막는다
+  OUTPUT=$(ASKFLOW_RALPH=1 claude --print --permission-mode acceptEdits "$PROMPT" 2>&1 | tee /dev/stderr) || true
 
   if grep -q "<promise>COMPLETE</promise>" <<<"$OUTPUT"; then
     echo ""

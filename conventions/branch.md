@@ -10,6 +10,7 @@
 | `develop` | change를 모으는 곳. 개발 서버에 배포 | `main` | `main` (릴리스) |
 | `change/<change-id>` | OpenSpec change 하나 구현. Ralph 루프가 일하는 곳 | `develop` | `develop` |
 | `fix/<짧은-설명>` | change가 아닌 작은 버그 수정 | `develop` | `develop` |
+| `chore/<짧은-설명>` | 기능이 아닌 개발 환경·설정 작업 (하네스, CI, 빌드 설정 등) | `develop` | `develop` |
 | `hotfix/<짧은-설명>` | 배포된 `main`의 급한 수정 | `main` | `main`과 `develop` 둘 다 |
 
 `<change-id>`는 OpenSpec change 이름을 그대로 쓴다. 예) `change/add-safe-sql-execution`
@@ -50,7 +51,7 @@ gitGraph
 4. **hotfix:** `main`에서 만들어 `main`에 merge하고 패치 태그를 붙인 뒤, 같은 브랜치를 `develop`에도 merge한다.
 5. **직접 커밋 금지:** `main`에는 직접 커밋하지 않는다. 릴리스와 hotfix PR로만 바뀐다. `develop`에는 문서 커밋만 직접 한다.
 6. **병합 방식:** squash하지 않고 merge commit으로 합친다. Ralph가 작업마다 남긴 커밋을 보존해 작업 단위로 되돌릴 수 있게 한다.
-7. **정리:** merge한 `change/`, `fix/`, `hotfix/` 브랜치는 지운다.
+7. **정리:** merge한 `change/`, `fix/`, `chore/`, `hotfix/` 브랜치는 지운다.
 8. **보호:** GitHub 브랜치 보호로 `main`과 `develop`은 PR로만 합치고 CI 통과를 필수로 한다. CI가 생기는 하네스 구성 단계(로드맵 5-1)에서 설정한다.
 
 ## 태그

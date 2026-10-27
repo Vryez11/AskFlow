@@ -25,7 +25,7 @@ AskFlow는 자연어로 요청하면 TextToSQL로 데이터를 뽑아, 정형 �
 | 3 IA | [`docs/mvp/03-ia.md`](03-ia.md) (Mermaid) | 초안 완료 |
 | 4 PRD | [`docs/mvp/04-prd.md`](04-prd.md) | 초안 완료 |
 | 5 아키텍처 | [`docs/mvp/05-architecture.md`](05-architecture.md) (Mermaid) | 초안 완료 |
-| 5-1 하네스 구성 | `CLAUDE.md`, 권한·훅, CI, 테스트·평가·재현 도구 ([하네스 규칙](../../conventions/harness.md) 5장 채우기) | 예정 |
+| 5-1 하네스 구성 | 레포 뼈대, `CLAUDE.md`, 권한·훅, git 훅, CI ([하네스 규칙](../../conventions/harness.md) 5장) | 완료 |
 | 5-2 OpenSpec change | PRD 7장 순서대로 기능 ID별 change | 예정 |
 | 6 디자인 토큰 | `web/design-tokens.json` | 예정 |
 | 7 MVP | Ralph 루프와 하네스로 change 구현(코드), `docs/mvp/07-mvp-test.md` | 예정 |
@@ -93,15 +93,14 @@ H1~H6과 검증 방법은 [STEP 1 검증 보고서](01-idea-validation.md#8-mvp�
 | 기술 스택 | 백엔드 Spring Boot(Kotlin), 프론트엔드 React, DB MySQL. 빌드 도구와 React 구성 같은 세부는 STEP 5 아키텍처 문서에서 정한다 | 2026-10-27 |
 | LLM | Claude API(공식 Java SDK). 기본 모델은 Claude Opus 5.5이고, 단계별 모델과 effort는 평가 세트로 비교해 정한다 | 2026-10-27 |
 | Olist 날짜 | 시드할 때 마지막 주문일이 어제가 되도록 7일 단위로 옮긴다 | 2026-10-27 |
+| 하네스 공유 | `.claude/settings.json`(권한·훅)만 커밋하고, 개인 설정과 OpenSpec 명령·스킬은 제외한다. web 패키지 매니저는 npm | 2026-10-27 |
 
 ## 결정이 필요한 것
 
 1. **일정:** 중간 평가 날짜에서 거꾸로 계산해 STEP 7 마감을 정한다.
 2. **팀 구성과 역할:** 팀 프로젝트라면 단계별 담당자.
-3. **하네스 공유:** 훅 설정이 든 `.claude/settings.json`을 커밋 대상으로 열지. 지금은 `.claude/` 전체를 제외하고 있어, 열지 않으면 팀원과 CI가 같은 훅을 쓰지 못한다. 하네스를 구성할 때(5-1) 정한다.
 
 ## 다음 할 일
 
-1. 하네스를 구성한다(5-1). 아키텍처 문서 3장의 레포 구조로 뼈대를 만들고, `CLAUDE.md`, 권한·훅, CI, 테스트·평가·재현 도구를 갖춘 뒤 아키텍처 문서 12장의 명령(안)을 확정해 하네스 규칙 5장에 채운다.
-2. PRD 7장의 순서대로 기능 ID마다 OpenSpec change를 만든다(`/opsx:propose`).
-3. Olist로 평가 세트(질문 30개, 대시보드·보고서 요청 10개)를 만든다. F-002 change를 구현하기 전에 있어야 한다.
+1. PRD 7장의 순서대로 기능 ID마다 OpenSpec change를 만든다(`/opsx:propose`). 첫 change는 `add-safe-sql-execution`(F-003)이다.
+2. Olist 시드 스크립트와 평가 세트(질문 30개, 대시보드·보고서 요청 10개)를 만든다. F-002 change를 구현하기 전에 있어야 한다.

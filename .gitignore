@@ -1,5 +1,7 @@
-# Claude Code 설정 (OpenSpec이 만든 명령·스킬 포함). 필요해지면 그때 커밋 대상에 넣는다
-.claude/
+# Claude Code 설정. 팀이 같이 쓰는 하네스(.claude/settings.json)만 커밋하고,
+# 개인 설정과 OpenSpec이 만든 명령·스킬은 제외한다
+.claude/*
+!.claude/settings.json
 CLAUDE.local.md
 
 # 비밀 값

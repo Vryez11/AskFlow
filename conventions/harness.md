@@ -61,19 +61,24 @@ flowchart TD
 
 ### 2-2. 퍼미션 하네스
 
-에이전트가 할 수 있는 범위를 정한다. 설정은 `.claude/settings.json`에 둔다.
+에이전트가 할 수 있는 범위를 정한다. 설정은 `.claude/settings.json`에 두고 커밋해 팀과 Ralph 루프가 같이 쓴다.
 
 | 단계 | 대상 |
 |---|---|
-| 허용 | 테스트, 린트, 타입 검사, 평가 실행, `openspec` 명령, `git status`·`diff`·`log`·`add`·`commit` |
-| 확인 | `git push`, 패키지 추가, DB 마이그레이션 실행 |
-| 거부 | `.env`와 `data/raw/` 읽기·쓰기, `git push --force`, 파일럿 DB 접속 |
+| 허용 | Gradle(`./gradlew`), web 스크립트(`npm --prefix web run`), `openspec`, `docker compose`, `git status`·`diff`·`log`·`show`·`add`·`commit`·`branch`·`switch`·`checkout` |
+| 확인 | `git push`, 패키지 추가(`npm install`) |
+| 거부 | `.env`와 `data/raw/` 읽기·쓰기, 강제 push |
 
-훅(PreToolUse)으로 추가로 막는 것:
+훅으로 추가로 막는 것:
 
-- [커밋 컨벤션](commit.md) 형식이 아닌 커밋 메시지
-- `main` 브랜치에 직접 커밋 ([브랜치 컨벤션](branch.md) 5번)
-- 바깥 루프가 도는 동안 이미 있는 시나리오 테스트 수정. 테스트가 틀렸다면 루프를 멈추고 사람이 고친다
+| 막는 것 | 어디서 |
+|---|---|
+| `.env.example`을 뺀 `.env` 계열 파일과 `data/raw/` 읽기·쓰기 | Claude Code PreToolUse 훅 (`scripts/harness/pre-file.sh`) |
+| 바깥 루프가 도는 동안 이미 커밋된 테스트 수정. 테스트가 틀렸다면 루프를 멈추고 사람이 고친다 | 같은 훅. Ralph가 `ASKFLOW_RALPH=1`로 실행할 때만 |
+| [커밋 컨벤션](commit.md) 형식이 아닌 커밋 메시지 | git `commit-msg` 훅 (`scripts/git-hooks/`) |
+| `main` 브랜치에 직접 커밋 ([브랜치 컨벤션](branch.md) 5번) | git `pre-commit` 훅 |
+
+커밋 관련 검사는 사람이 커밋할 때도 똑같이 걸리도록 git 훅으로 둔다. git 훅은 `git config core.hooksPath scripts/git-hooks`로 한 번 켠다.
 
 ### 2-3. 검증 하네스
 
@@ -84,10 +89,13 @@ flowchart TD
 
   | 검사 | 훅에서 | CI에서 |
   |---|---|---|
-  | 포맷·린트 | 파일을 고칠 때마다 (PostToolUse) | 모든 push |
+  | web 린트 | 파일을 고칠 때마다 그 파일만 (PostToolUse) | 모든 push |
+  | Kotlin 린트 | 턴을 끝낼 때 (Stop). Gradle을 거쳐 느려서 파일마다 돌리지 않는다 | 모든 push |
   | 타입 검사 | 턴을 끝낼 때 (Stop) | 모든 push |
   | 테스트 | 턴을 끝낼 때 (Stop). 빠른 단위 테스트만 | 모든 push. 통합 테스트 포함 |
   | `openspec validate --strict` | change 문서를 고친 턴의 끝 (Stop) | 모든 push |
+
+  Stop 훅(`scripts/harness/stop-check.sh`)은 `develop`에서 갈라진 뒤 바뀐 영역의 검사만 돌린다. 같은 세션에서 세 번 연속 실패하면 더 막지 않고 사람에게 넘긴다.
 
 - **평가 세트:** Olist 질문 30개, 대시보드·보고서 요청 10개로 정답률을 잰다. LLM 비용이 드니 바깥 루프가 끝난 뒤 한 번, 그리고 파이프라인 change의 PR에서 돌린다. 정답률이 직전 기록보다 3%p 넘게 떨어지면 merge하지 않는다(초안).
 - **독립 검토:** 3-3의 검토 루프.
@@ -180,15 +188,17 @@ flowchart TD
 
 PR은 CI가 통과해야 merge한다.
 
-## 5. 기술 스택이 정해지면 채울 것
+## 5. 명령
 
-STEP 5에서 기술 스택을 정한 뒤 하네스를 구성하며 채운다(로드맵 5-1).
+하네스 구성(로드맵 5-1)에서 정했다. 훅, CI, Ralph 지시문이 모두 이 명령을 쓴다.
 
 | 항목 | 명령 |
 |---|---|
-| 포맷·린트 | 미정 |
-| 타입 검사 | 미정 |
-| 빠른 단위 테스트 (Stop 훅용) | 미정 |
-| 전체 테스트 (CI용) | 미정 |
-| 평가 세트 실행 | 미정 |
-| 요청 하나 재현 | 미정 |
+| Kotlin 린트 / 자동 고치기 | `./gradlew ktlintCheck` / `./gradlew ktlintFormat` |
+| web 린트 | `npm --prefix web run lint` |
+| 타입 검사 | `./gradlew compileKotlin compileTestKotlin`, `npm --prefix web run typecheck` |
+| 빠른 단위 테스트 (Stop 훅용) | `./gradlew :pipeline:test`, `npm --prefix web run test` |
+| 전체 테스트 (CI용) | `./gradlew ktlintCheck build`, `npm --prefix web run test` |
+| 스펙 검사 | `openspec validate --all --strict --no-interactive` |
+| 평가 세트 실행 | F-002 change에서 만든다 (아키텍처 문서 9장) |
+| 요청 하나 재현 | F-002 change에서 만든다 |
