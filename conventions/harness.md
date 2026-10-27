@@ -186,7 +186,7 @@ flowchart TD
 - [ ] 파이프라인 change라면 평가 세트 결과를 기록했다. PR 설명에도 적는다.
 - [ ] 요구사항이 바뀌었다면 PRD도 고쳤다.
 
-PR은 CI가 통과해야 merge한다.
+PR 템플릿(`.github/pull_request_template.md`)의 "확인한 것"이 이 목록을 담고 있다. PR은 CI가 통과해야 merge한다.
 
 ## 5. 명령
 
