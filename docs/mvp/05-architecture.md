@@ -45,16 +45,20 @@ askflow/
 ├── pipeline/       # 순수 Kotlin 라이브러리: 생성 파이프라인과 인터페이스
 ├── eval/           # 평가 세트 실행, 실패 리포트, 요청 재현
 ├── web/            # React 앱
+├── docker/         # 로컬 MySQL 초기화 스크립트
 ├── scripts/
+│   ├── harness/    # Claude Code 훅
+│   ├── git-hooks/  # 커밋 메시지·브랜치 검사
 │   ├── ralph/      # Ralph 루프
 │   └── seed/       # Olist 적재와 날짜 옮기기
 ├── data/raw/       # Olist 원본 (커밋하지 않음)
 ├── logs/           # 실행 기록 (커밋하지 않음)
 ├── docs/, openspec/, conventions/
+├── CLAUDE.md
 └── docker-compose.yml
 ```
 
-`worker/`는 MVP 이후 워커를 분리할 때 만든다.
+하네스 구성(5-1)에서 `api/`, `pipeline/`, `web/`, `docker/`, `scripts/harness/`, `scripts/git-hooks/`를 만들었다. `eval/`과 `scripts/seed/`는 F-002 change와 평가 세트를 만들 때, `worker/`는 MVP 이후 워커를 분리할 때 만든다.
 
 ## 4. 생성 흐름
 
@@ -194,18 +198,10 @@ LLM에는 스키마, 컬럼 설명, 용어 사전, 집계된 결과만 보낸다
 
 비밀 값(Claude API 키, DB 계정)은 환경 변수로 넣고 `.env.example`에 이름과 설명만 적는다. 배포할 클라우드는 STEP 7 전에 정한다.
 
-## 12. 하네스 명령 (안)
+## 12. 하네스 명령
 
-하네스 구성(5-1)에서 확정해 [하네스 규칙](../../conventions/harness.md) 5장에 채운다.
-
-| 항목 | 명령 (안) |
-|---|---|
-| 포맷·린트 | `./gradlew ktlintCheck`, `pnpm --dir web lint` |
-| 타입 검사 | `./gradlew compileKotlin compileTestKotlin`, `pnpm --dir web typecheck` |
-| 빠른 단위 테스트 (Stop 훅) | `./gradlew :pipeline:test` |
-| 전체 테스트 (CI) | `./gradlew test` (api는 Testcontainers MySQL 포함), `pnpm --dir web test` |
-| 평가 세트 실행 | `./gradlew :eval:run` |
-| 요청 하나 재현 | `./gradlew :eval:replay --args="<실행 기록 ID>"` |
+하네스 구성(5-1)에서 확정한 명령은 [하네스 규칙](../../conventions/harness.md) 5장에 있다. web 패키지 매니저는 npm을 쓴다.
+평가 세트 실행과 요청 재현은 F-002 change에서 `eval/` 모듈과 함께 만든다(9장).
 
 ## 13. OpenSpec change로 넘길 것
 
