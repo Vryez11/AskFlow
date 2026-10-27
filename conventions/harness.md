@@ -12,14 +12,14 @@ AskFlow는 OpenSpec으로 만든 스펙을 AI 에이전트(Claude Code)에게 �
 
 ## 1. 전체 흐름
 
-change 하나를 이렇게 진행한다. 문서만 바꾸는 커밋은 이 흐름 없이 바로 커밋해도 된다.
+change 하나를 이렇게 진행한다. 브랜치는 [브랜치 컨벤션](branch.md)을 따르고, 문서만 바꾸는 커밋은 이 흐름 없이 `develop`에 바로 커밋한다.
 
 ```mermaid
 flowchart TD
     A["1. 제안<br/>/opsx:propose"] --> B{"2. 사람이 승인?"}
     B -->|"고칠 점 있음"| U["/opsx:update"]
     U --> B
-    B -->|"승인"| C["3. 브랜치 change/change-id"]
+    B -->|"승인"| C["3. develop에서 브랜치<br/>change/change-id"]
     C --> R
     subgraph outer["바깥 루프: Ralph, 작업 하나씩"]
         R["새 세션이 tasks.md에서<br/>다음 작업 하나 선택"] --> W["구현"]
@@ -33,18 +33,18 @@ flowchart TD
     N -->|"없음"| E["평가 세트<br/>파이프라인 change만"]
     E --> V{"검토 루프<br/>막는 지적?"}
     V -->|"있음"| R
-    V -->|"없음"| P["PR, CI 통과 후 merge"]
-    P --> Z(["/opsx:archive<br/>필요하면 PRD 반영"])
+    V -->|"없음"| Z["/opsx:archive<br/>필요하면 PRD 반영"]
+    Z --> P(["develop으로 PR<br/>CI 통과 후 merge"])
 ```
 
 1. **제안:** `/opsx:propose`로 change를 만든다. tasks.md의 첫 작업 묶음은 시나리오를 실패하는 테스트로 옮기는 일이다(`openspec/config.yaml` 규칙).
 2. **승인:** 사람이 proposal, specs, design, tasks를 읽고 승인한다. 고칠 점은 `/opsx:update`로 고친다. 승인 전에는 구현하지 않는다.
-3. **브랜치:** change마다 `change/<change-id>` 브랜치를 만든다.
+3. **브랜치:** `develop`에서 `change/<change-id>` 브랜치를 만든다.
 4. **구현:** 바깥 루프(Ralph)가 tasks.md의 작업을 하나씩 구현한다. 대화하며 직접 진행하고 싶으면 `/opsx:apply`를 써도 된다.
 5. **평가:** 파이프라인(F-001, F-002, F-004, F-005)을 바꾼 change는 평가 세트를 돌려 정답률을 기록한다.
 6. **검토:** 검토 루프에서 막는 지적이 없어질 때까지 고친다.
-7. **PR과 CI:** PR을 열고, CI 검사가 모두 통과하면 merge한다.
-8. **마무리:** `/opsx:archive`로 스펙을 합친다. 구현하며 요구사항이 바뀌었다면 PRD도 고친다(스펙 관리 규칙 4번).
+7. **archive:** 4장의 완료 조건을 채우면 change 브랜치에서 `/opsx:archive`로 스펙을 합친다. 구현하며 요구사항이 바뀌었다면 PRD도 고친다(스펙 관리 규칙 4번). 스펙 갱신이 같은 PR에 들어간다.
+8. **PR과 CI:** `develop`으로 PR을 열고, CI 검사가 모두 통과하면 merge한다. `develop`에 모인 change는 릴리스 PR로 `main`에 들어간다.
 
 사람이 판단하는 곳은 루프 앞(change 승인)과 뒤(검토 결과와 PR 승인)다. 루프가 도는 동안에는 개입하지 않고, 루프가 막혔다고 알려 올 때만 판단한다.
 
@@ -72,6 +72,7 @@ flowchart TD
 훅(PreToolUse)으로 추가로 막는 것:
 
 - [커밋 컨벤션](commit.md) 형식이 아닌 커밋 메시지
+- `main` 브랜치에 직접 커밋 ([브랜치 컨벤션](branch.md) 5번)
 - 바깥 루프가 도는 동안 이미 있는 시나리오 테스트 수정. 테스트가 틀렸다면 루프를 멈추고 사람이 고친다
 
 ### 2-3. 검증 하네스
@@ -108,7 +109,7 @@ flowchart TD
 
 작업을 격리하고 역할을 나눈다.
 
-- **격리:** change마다 `change/<change-id>` 브랜치에서 일한다. 여러 change를 동시에 진행할 때는 worktree로 폴더를 나눈다.
+- **격리:** change마다 `develop`에서 만든 `change/<change-id>` 브랜치에서 일한다. 여러 change를 동시에 진행할 때는 worktree로 폴더를 나눈다.
 - **역할 분리:**
 
   | 역할 | 누가 |
@@ -168,14 +169,16 @@ flowchart TD
 
 ## 4. change 완료 조건
 
-아래를 모두 채워야 archive한다.
+아래를 모두 채우면 change 브랜치에서 archive하고 `develop`으로 PR을 연다.
 
 - [ ] tasks.md의 작업이 모두 체크됐다.
 - [ ] 시나리오마다 테스트가 있고 모두 통과한다.
-- [ ] CI가 통과했다.
+- [ ] 자동 검사가 로컬에서 모두 통과한다.
 - [ ] 검토에서 막는 지적이 없다.
-- [ ] 파이프라인 change라면 평가 세트 결과를 PR에 적었다.
+- [ ] 파이프라인 change라면 평가 세트 결과를 기록했다. PR 설명에도 적는다.
 - [ ] 요구사항이 바뀌었다면 PRD도 고쳤다.
+
+PR은 CI가 통과해야 merge한다.
 
 ## 5. 기술 스택이 정해지면 채울 것
 
