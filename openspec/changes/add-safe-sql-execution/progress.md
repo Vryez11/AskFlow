@@ -280,3 +280,12 @@
 - 새 막음 1건: 뷰나 생성 컬럼이 개인정보 컬럼을 다른 이름으로 내보내면 해석 트리와 JDBC 메타데이터 모두 개인정보로 보지 못한다(메타데이터는 뷰 이름을 돌려준다). 로컬 MySQL 8.4에서 뷰 열과 생성 컬럼으로 원래 값이 나오는 것, `VIEW_DEFINITION`과 `GENERATION_EXPRESSION`을 SQL로 읽을 수 있는 것을 확인했다. 기존 요구사항(서브쿼리를 거친 열도 개인정보)에 어긋나 막음으로 두고, 스펙에 시나리오 세 개, design 7장에 "뷰와 생성 컬럼"을 더해 작업 6.4로 넣었다.
 - 제안 1건: `PiiLineage.isCount`가 창 함수 `COUNT(...) OVER`도 COUNT 예외로 본다. 값이 나가지 않아 안전하지만 주석("창 함수 COUNT는 따로 보지 않고 훑는다")과 어긋난다. 주석이나 동작을 맞추면 좋다.
 ---
+
+## 2026-10-28 - 6.4 뷰와 생성 컬럼을 거친 개인정보 열을 가림
+- `guard/PiiColumnResolver.resolve(piiColumns, views, generatedColumns)`: 설정의 개인정보 컬럼에 뷰 열(`VIEW_DEFINITION`을 `PiiLineage`로 추적해 열 순서로 맞춤)과 생성 컬럼(`SELECT (생성식) FROM 테이블`로 감싸 추적)을 더한다. 더 늘지 않을 때까지 반복한다. 정의가 비었거나, 해석 실패, 항목 수가 뷰 열 수와 다르거나 `STAR`면 그 뷰의 모든 열(생성 컬럼은 그 컬럼)을 더한다.
+- `MySqlConnector`: `information_schema.COLUMNS`·`VIEWS`를 읽어 `PiiJudge`(실제 개인정보 컬럼으로 만든 `PiiLineage`와 `PiiColumnMarker`)를 만든다. 연결 확인(스키마 확인 뒤)마다 다시 만들고, 없으면 `run`이 실행 전에 같은 연결로 먼저 읽는다. 읽다가 SQL 예외가 나면 실행하지 않고 `CONNECTION_FAILED`.
+- 새 테스트: 단위 `PiiColumnResolverTest`(9개), 통합 `PiiViewIT`(5개: 뷰 열, 뷰 `*`, 생성 컬럼, SHOW VIEW 없는 계정의 뷰, 연결 확인 때 바뀐 뷰 정의를 다시 읽음). 구현 전 둘 다 가림 단언에서 실패한 것을 확인했다. `PiiViewIT`는 따로 스키마 `pii_views`와 계정 `askflow_noview`(SELECT만)를 만든다.
+- 확인: `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest`, `./gradlew ktlintCheck build` 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiColumnResolver.kt`(새 파일), `.../mysql/MySqlConnector.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/PiiColumnResolverTest.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/PiiViewIT.kt`, `pipeline/CLAUDE.md`, `tasks.md`
+- 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
+---
