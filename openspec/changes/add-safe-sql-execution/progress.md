@@ -336,3 +336,9 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`, `.../guard/PiiSchemaObjects.kt`, 위 테스트 파일들, `pipeline/CLAUDE.md`, `tasks.md`
 - 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다. 재검토 때 볼 만한 것: `t.*`의 `findSource`는 대소문자를 무시해 첫 출처를 고른다(별표는 메타데이터로 판정하니 막음은 아닐 것).
 ---
+
+## 2026-10-28 - 7.1 최종 검토 (b9101a8 대상)
+- 6.7은 설명대로 닫혔다. 체크리스트 6항목은 아래 한 건 말고 문제없음(단위 120, 통합 46, api 18, web 7 강제 재실행 통과, 커밋·범위·비밀 이상 없음).
+- 막음 1건(작업 6.8): 이름이 정확히 같은 CTE가 있으면 대소문자만 다른 CTE가 함께 보이는지 보지 않고 그 CTE로 확정한다. `PiiLineage` 출처 해석에서 정확 일치 분기가 대소문자 확인보다 먼저다.
+- 제안 1건(6.8에 넣음): LATERAL과 대소문자만 다른 출처 가리기를 실제 MySQL로 확인하는 통합 테스트.
+---
