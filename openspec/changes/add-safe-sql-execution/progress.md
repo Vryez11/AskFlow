@@ -23,6 +23,7 @@
 - `MySqlConnector`는 `config.allowedTables`로 `SqlGuard`를 만들고 `execute`의 검사 통과 뒤는 `TODO()`다(3.1). 빈 허용 목록 처리는 3.5.
 - 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. 그래서 풀의 JDBC `readOnly`는 끄고(켜면 드라이버가 먼저 거부해 오류 코드 0) 세션 변수로 읽기 전용을 건다(3.1, design 4장을 이에 맞춰 고쳤다).
 - `MySqlConnector.execute`(3.1): 검사 → `run`(연결 빌림, 끝나면 rollback) → `query`. SQL 예외는 아직 그대로 던진다. 3.2가 `run`에서 잡아 분류한다. 결과 열의 `pii`는 아직 `false`(3.3).
+- 결과 열의 `pii`(3.3): `MySqlConnector.markPii`가 실행한 SQL을 `PiiLineage`로 추적하고 `PiiColumnMarker`가 메타데이터와 합친다. 추적이 예외를 던지거나 항목을 열에 맞출 수 없으면 모두 가린다.
 - **3.2 해결:** 시간 상한 시나리오 쿼리는 행을 실제로 훑는 `SELECT SUM(a.n + b.n + c.n) FROM numbers a, numbers b, numbers c`로 바꿨다(사람이 승인). MySQL 8.4는 조건 없는 교차 조인의 `COUNT(*)`를 행 수 곱으로 바로 계산하니, 느린 쿼리가 필요하면 `COUNT(*)`를 쓰지 않는다.
 
 ---
@@ -156,4 +157,12 @@
 - 확인: `./gradlew :pipeline:integrationTest --tests '*MySqlConnectorIT*'`에서 시간 상한(1.02초 만에 `TIMEOUT`), 없는 컬럼, DB 꺼짐 시나리오가 통과한다. 남은 실패 3개(`SELECT 별표` 두 개, 화면용 결과)는 3.3 몫이다. tasks.md 3.2를 체크했다.
 - 바꾼 파일: `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnectorIT.kt`, `openspec/changes/add-safe-sql-execution/design.md`, `openspec/changes/add-safe-sql-execution/tasks.md`
 - 다음 반복(3.3): `PiiLineage`의 `STAR` 항목을 JDBC 메타데이터로 판정한다. "알아 둘 패턴"의 별표 항목 수 맞추기 규칙을 먼저 본다.
+---
+
+## 2026-10-28 - 3.3 JDBC 메타데이터로 개인정보 열 표시
+- `MySqlConnector.query`가 결과 열마다 `pii`를 채운다: 메타데이터의 `getTableName`·`getColumnName`(원래 테이블·컬럼, 계산한 열은 빈 값)과 `PiiLineage.trace(실행한 SQL)`를 새 `mysql/PiiColumnMarker`(internal)가 합친다. 둘 중 하나라도 개인정보면 가린다.
+- 맞추기 규칙: 별표 없으면 항목 수 = 열 수일 때만 자리로 맞춘다. 별표 하나면 나머지 항목을 앞뒤에 두고 남는 열을 별표 몫으로 보고 메타데이터로만 판정한다(메타데이터 없으면 가림). 별표 둘 이상, 수가 안 맞음, 추적 예외면 모두 가린다. 설정의 스키마 접두어는 무시하고 대소문자도 무시한다.
+- 새 `PiiColumnMarkerTest`(5개) 통과. `MySqlConnectorIT` 19개 모두 통과. `:pipeline:test`의 남은 실패는 `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4)뿐이다. `ktlintCheck`, 모든 컴파일 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`, `.../mysql/PiiColumnMarker.kt`(새 파일), `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/mysql/PiiColumnMarkerTest.kt`(새 파일), `pipeline/CLAUDE.md`, `tasks.md`
+- 다음 반복(3.4): `GrantParser`와 `ConnectionFailureClassifier`. "알아 둘 패턴"의 HikariCP 원인 사슬 주의와 1.4 기록의 `08004` 메모를 본다.
 ---

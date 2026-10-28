@@ -13,4 +13,5 @@
 - DB에 닿는지 단위 테스트로 보려면 `MySqlConnector`의 internal 생성자에 `src/test`의 `RecordingDataSource`(보낸 SQL을 기록하는 가짜 JDBC)를 넣는다.
 - 읽기 전용은 DB 세션(`connectionInitSql`의 `transaction_read_only = ON`)에 건다. 풀의 JDBC `readOnly`를 켜거나 Connector/J `readOnlyPropagatesToServer`를 켜면 반납 때 `SET SESSION TRANSACTION READ WRITE`가 나가 세션이 쓰기 가능해진다(`ReadOnlySessionIT`가 막는다).
 - MySQL 8.4는 조건 없는 교차 조인의 `COUNT(*)`를 행 수 곱으로 바로 계산한다. 느린 쿼리가 필요하면 행을 실제로 훑게 만들어야 한다.
+- Connector/J 메타데이터의 `getColumnLabel`은 별칭, `getTableName`·`getColumnName`은 원래 테이블·컬럼이다. 계산한 열은 둘 다 빈 문자열이다. 결과 열의 개인정보 표시는 `mysql/PiiColumnMarker`가 `PiiLineage` 판정과 이 메타데이터를 합쳐 정한다.
 - 분석 대상 DB 코드는 `io.askflow.pipeline.datasource`(공개 타입), `.guard`(SQL 검사), `.mysql`(구현체)에 둔다.

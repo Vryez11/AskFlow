@@ -11,8 +11,10 @@ import io.askflow.pipeline.datasource.QueryResult
 import io.askflow.pipeline.datasource.ResultColumn
 import io.askflow.pipeline.datasource.TargetDbConfig
 import io.askflow.pipeline.datasource.guard.GuardResult
+import io.askflow.pipeline.datasource.guard.PiiLineage
 import io.askflow.pipeline.datasource.guard.SqlGuard
 import java.sql.Connection
+import java.sql.ResultSetMetaData
 import java.sql.SQLException
 import java.sql.SQLTimeoutException
 import java.sql.SQLTransientConnectionException
@@ -31,6 +33,8 @@ class MySqlConnector internal constructor(
 
     // 빈 허용 목록이면 연결 확인에서 읽은 스키마 테이블을 쓴다 (3.5)
     private val guard = SqlGuard(config.schema, config.allowedTables.toSet(), config.maxRows)
+    private val lineage = PiiLineage(config.piiColumns)
+    private val marker = PiiColumnMarker(config.piiColumns)
 
     override fun execute(sql: String): ExecutionOutcome =
         when (val checked = guard.check(sql)) {
@@ -104,7 +108,8 @@ class MySqlConnector internal constructor(
             statement.maxRows = config.maxRows + 1
             statement.executeQuery(sql).use { rs ->
                 val meta = rs.metaData
-                val columns = (1..meta.columnCount).map { ResultColumn(name = meta.getColumnLabel(it), pii = false) }
+                val pii = markPii(sql, meta)
+                val columns = (1..meta.columnCount).map { ResultColumn(name = meta.getColumnLabel(it), pii = pii[it - 1]) }
                 val rows =
                     buildList {
                         while (rs.next()) add(columns.indices.map { rs.getObject(it + 1) })
@@ -114,6 +119,22 @@ class MySqlConnector internal constructor(
                 return ExecutionOutcome.Success(QueryResult(columns, rows, elapsed, sql))
             }
         }
+    }
+
+    /** 해석 트리와 메타데이터 중 하나라도 개인정보라고 하면 가린다. 해석 트리를 못 읽으면 모두 가린다 (design 7장) */
+    private fun markPii(
+        sql: String,
+        meta: ResultSetMetaData,
+    ): List<Boolean> {
+        val origins =
+            (1..meta.columnCount).map { i ->
+                // Connector/J의 getTableName·getColumnName은 별칭이 아닌 원래 테이블·컬럼이다
+                val table = meta.getTableName(i).orEmpty()
+                val column = meta.getColumnName(i).orEmpty()
+                if (table.isEmpty() || column.isEmpty()) null else ColumnOrigin(table, column)
+            }
+        val items = runCatching { lineage.trace(sql) }.getOrNull() ?: return origins.map { true }
+        return marker.mark(items, origins)
     }
 
     private fun rowLimitExceeded(): ExecutionOutcome.Failure =

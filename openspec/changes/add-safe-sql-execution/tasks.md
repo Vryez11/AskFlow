@@ -24,7 +24,7 @@
 
 - [x] 3.1 HikariCP 풀(읽기 전용, `connectionInitSql`, `initializationFailTimeout = -1`)과 `execute`(읽기 전용 트랜잭션, `queryTimeout`, `maxRows`, rollback)를 구현한다. 확인: `MySqlConnectorIT`의 읽기 전용 세션, 성공 결과 형식, 행 수 상한, 다시 쓴 SQL 결과 일치 통과
 - [x] 3.2 실행 오류 분류(3024·`SQLTimeoutException` → 시간 상한, 통신 오류 → 연결 실패, 그 밖 → DB 오류)와 오류 메시지에서 비밀 값 빼기를 구현한다. 확인: `MySqlConnectorIT`의 시간 상한, 없는 컬럼, DB 꺼짐 시나리오 통과
-- [ ] 3.3 JDBC 메타데이터로 개인정보 열 표시를 더한다. 확인: `MySqlConnectorIT`의 `SELECT *`, 화면용 결과 시나리오 통과, `./gradlew :pipeline:integrationTest --tests '*MySqlConnectorIT*'` 전체 통과
+- [x] 3.3 JDBC 메타데이터로 개인정보 열 표시를 더한다. 확인: `MySqlConnectorIT`의 `SELECT *`, 화면용 결과 시나리오 통과, `./gradlew :pipeline:integrationTest --tests '*MySqlConnectorIT*'` 전체 통과
 - [ ] 3.4 `GrantParser`와 연결 실패 원인 분류를 구현한다. 확인: `GrantParserTest`, `ConnectionFailureClassifierTest` 통과
 - [ ] 3.5 `checkConnection()`(권한 확인, 스키마·허용 테이블 확인, 빈 허용 목록이면 스키마 테이블 사용)을 구현한다. 확인: `./gradlew :pipeline:test :pipeline:integrationTest` 전체 통과
 
