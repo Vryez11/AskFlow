@@ -4,7 +4,7 @@
 - 모듈 규칙과 Gradle 함정은 `pipeline/CLAUDE.md`에 있다.
 - 공개 타입은 `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/`에 있다. 오류는 `ExecutionError(kind, message, cause, checkPoints)`이고, 테스트는 `kind`와 `cause`(거부한 테이블·함수 이름, 상한 값), `checkPoints`(설정 키)를 본다. 오류 종류의 한국어 이름은 `ExecutionErrorKind.label`.
 - `SqlGuard(schema, allowedTables, maxRows).check(sql)`은 `GuardResult.Passed(sql = 다시 쓴 SQL)` 또는 `Rejected(error)`를 돌려준다.
-- 개인정보 열 추적은 `PiiLineage(piiColumns).trace(sql): List<ItemPii>`(guard 패키지). 최상위 SELECT 항목마다 `PII`/`SAFE`/`STAR`. `STAR`(`*`, `t.*`)는 3.3에서 JDBC 메타데이터로 판정한다. 결과 열과 항목 수가 `STAR` 때문에 다를 수 있으니 3.3에서 맞춰야 한다.
+- 개인정보 열 추적은 `PiiLineage(piiColumns).trace(sql): List<ItemPii>`(guard 패키지). 최상위 SELECT 항목마다 `PII`/`SAFE`/`STAR`. `STAR`(`*`, `t.*`)는 3.3에서 JDBC 메타데이터로 판정한다. 결과 열과 항목 수가 `STAR` 때문에 다를 수 있으니 3.3에서 맞춰야 한다. 2.4 구현: `STAR`는 기본 테이블만 펼친 `*`에만 나온다. 서브쿼리·CTE를 펼친 `*`, `*`가 섞인 UNION, VALUES 같은 문은 `PII` 한 항목이 되어 항목 수가 결과 열 수와 다를 수 있다. 3.3은 맞출 수 없으면(별표가 둘 이상이거나 별표 없이 수가 다름) 모든 열을 가린다(`PiiLineage` KDoc). `QueryResult.forLlm()`은 구현됐다.
 - 1장 동안 Stop 훅은 `:pipeline:test` 실패(모두 `NotImplementedError`)로 매번 막는다. 1장의 확인 조건이 실패라 정상이고, 구현을 당겨 하지 않는다. 2~5장에서도 뒤 작업의 테스트(pipeline 단위, web `ConnectionStatus.test.tsx`)가 남아 있는 동안은 같다. 실패가 모두 뒤 작업 몫인지만 확인한다. 3/3이면 훅이 사람에게 넘긴다. 실패가 `NotImplementedError` 말고도 있는지만 확인한다.
 - UNION 끝 LIMIT의 JSqlParser 함정은 `pipeline/CLAUDE.md`에 있다. LIMIT 다시 쓰기는 `SqlGuard.capLimit()`가 이를 처리한다.
 - `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 본문은 `TODO()`다. 풀 생성은 companion의 `createPool`.
@@ -117,4 +117,15 @@
 - `LimitRewriteTest` 7개, `SqlGuardTest` 전체 통과. `:pipeline:test`의 남은 실패는 `PiiLineageTest` 14(2.4), `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4)뿐이다.
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/SqlGuard.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/LimitRewriteEdgeTest.kt`(새 파일)
 - 다음 반복(2.4): `PiiLineage(piiColumns).trace(sql)`를 구현한다. 트리를 훑을 때 visitor만 믿지 말고 `ReferenceCollector`처럼 빠짐없이 따라간다. LIMIT 다시 쓰기는 최상위 SELECT 항목을 바꾸지 않으니 개인정보 추적은 원문·다시 쓴 SQL 어느 쪽으로 해도 항목이 같다.
+---
+
+## 2026-10-28 - 2.4 개인정보 열 해석 트리 추적과 forLlm
+- `PiiLineage.trace()`: 문을 해석해 SELECT마다 FROM 출처(기본 테이블, 파생 테이블·CTE, 모르는 것)로 범위를 만들고, 항목 식을 리플렉션으로 모두 훑어 COUNT(창 함수가 아닌 이름 하나짜리) 밖의 컬럼 참조를 출처까지 푼다. 테이블을 적은 컬럼은 그 별칭의 출처, 안 적은 컬럼은 보이는 모든 범위(바깥 포함)에서 찾고, 못 찾으면 `PII`. 식 안 서브쿼리는 항목 하나라도 `SAFE`가 아니면 `PII`.
+- CTE 이름은 쓴 그대로 비교(`ReferenceCollector`와 같음), 열 이름 목록(`c(a, b)`, `t(a)`)은 자리로 붙이고 맞출 수 없으면 모두 `PII`. UNION은 자리마다 OR, 가지에 `*`가 있거나 수가 다르면 모두 `PII`. 재귀 CTE의 자기 참조는 풀지 않고 가린다(넉넉히 가림).
+- `QueryResult.forLlm()`: `pii` 열을 빼고 이름만 `removedColumns`에 남긴다.
+- `ReferenceCollector`의 리플렉션 도구를 새 `guard/JsqlTree`로 옮겨 같이 쓴다.
+- 새 `PiiLineageEdgeTest`(6개): 열 이름 목록, 괄호 조인·상관 서브쿼리, CASE·창 함수, 서브쿼리를 펼친 별표·별표 섞인 UNION, 모르는 별칭·재귀 CTE, 같은 이름의 다른 테이블·CTE 그림자.
+- `PiiLineageTest` 14개 통과. `:pipeline:test`의 남은 실패는 `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4)뿐이다. `ktlintCheck`, 모든 컴파일 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`, `.../guard/JsqlTree.kt`(새 파일), `.../guard/ReferenceCollector.kt`, `.../datasource/QueryResult.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/PiiLineageEdgeTest.kt`(새 파일), `pipeline/CLAUDE.md`
+- 다음 반복(3.1): HikariCP 풀과 `execute`. 결과 열의 `pii`는 3.3에서 `PiiLineage`와 메타데이터를 합쳐 정한다. 3.1에서는 아직 `false`로 둬도 3.1 확인 시나리오에는 영향이 없다.
 ---
