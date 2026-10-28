@@ -86,7 +86,7 @@ class MySqlConnectorIT {
         val config = TestMySql.config(queryTimeout = Duration.ofSeconds(1))
         val started = System.nanoTime()
 
-        val error = failed(ExecutionErrorKind.TIMEOUT, "SELECT COUNT(*) FROM numbers a, numbers b, numbers c", config)
+        val error = failed(ExecutionErrorKind.TIMEOUT, "SELECT SUM(a.n + b.n + c.n) FROM numbers a, numbers b, numbers c", config)
 
         val elapsed = Duration.ofNanos(System.nanoTime() - started)
         assertTrue(elapsed < Duration.ofSeconds(5), "상한 1초인데 ${elapsed.toMillis()}ms 걸렸다")
