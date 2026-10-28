@@ -1,10 +1,10 @@
-# Spec Delta
+# safe-sql-execution Specification
 
 ## Purpose
 
 생성된 SQL이 무엇이든 분석 대상 DB를 바꾸거나 무겁게 만들지 못하게 실행하고, 개인정보 컬럼의 값이 LLM으로 나가지 않게 한다. 목표와 수용 기준은 PRD F-003을 따른다.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: 검사를 거친 SQL만 실행 (F-003)
 
@@ -64,7 +64,7 @@
 
 ### Requirement: 허용 테이블만 조회 (F-003)
 
-SQL이 읽는 모든 테이블(서브쿼리, 조인, CTE 안 포함)은 설정한 스키마의 허용 테이블이어야 한다(SHALL). CTE 이름은 테이블로 보지 않는다. 다른 스키마(시스템 스키마와 서비스 DB 포함)를 가리키는 테이블은 거부해야 한다(SHALL).
+SQL이 읽는 모든 테이블(서브쿼리, 조인, CTE 안 포함)은 설정한 스키마의 허용 테이블이어야 한다(SHALL). CTE 이름은 테이블로 보지 않는다. 다른 스키마(시스템 스키마와 서비스 DB 포함)를 가리키는 테이블은 거부해야 한다(SHALL). 스키마 이름은 설정과 정확히 같아야 하며, 대소문자만 달라도 다른 스키마로 본다.
 
 #### Scenario: 허용 테이블만 씀
 - **WHEN** 허용 테이블 orders와 customers를 조인하는 SQL을 실행한다
@@ -78,13 +78,17 @@ SQL이 읽는 모든 테이블(서브쿼리, 조인, CTE 안 포함)은 설정�
 - **WHEN** `information_schema.tables`, `mysql.user`, `askflow.artifact`처럼 다른 스키마의 테이블을 읽으려 한다
 - **THEN** "허용하지 않은 테이블" 오류로 거부된다
 
+#### Scenario: 대소문자만 다른 스키마
+- **WHEN** 설정한 스키마와 대소문자만 다른 스키마 이름을 붙인 테이블을 읽으려 한다
+- **THEN** "허용하지 않은 테이블" 오류로 거부된다
+
 #### Scenario: CTE 이름
 - **WHEN** `WITH monthly AS (SELECT ... FROM orders) SELECT * FROM monthly`를 실행한다
 - **THEN** monthly는 테이블로 보지 않고, 검사를 통과한다
 
 ### Requirement: 부작용이 있는 함수 거부 (F-003)
 
-시스템은 DB를 붙잡아 두거나 서버 파일·잠금에 닿는 함수를 쓰는 SQL을 거부해야 한다(SHALL). 대상은 SLEEP, BENCHMARK, LOAD_FILE, GET_LOCK, RELEASE_LOCK, RELEASE_ALL_LOCKS다.
+시스템은 DB를 붙잡아 두거나 서버 파일·잠금에 닿는 함수를 쓰는 SQL을 거부해야 한다(SHALL). 대상은 SLEEP, BENCHMARK, LOAD_FILE, GET_LOCK, RELEASE_LOCK, RELEASE_ALL_LOCKS다. 세션에 값을 남기는 사용자 변수(읽기와 대입 모두)와 LAST_INSERT_ID도 거부해야 한다(SHALL). 연결 풀이 같은 세션을 다시 쓰면 값이 다음 실행으로 넘어갈 수 있기 때문이다. 오류 종류는 모두 "허용하지 않은 함수"이고, 원인에 함수 이름이나 "사용자 변수"가 있다.
 
 #### Scenario: SLEEP
 - **WHEN** `SELECT SLEEP(100)`을 실행하려 한다
@@ -92,6 +96,14 @@ SQL이 읽는 모든 테이블(서브쿼리, 조인, CTE 안 포함)은 설정�
 
 #### Scenario: LOAD_FILE
 - **WHEN** `SELECT LOAD_FILE('/etc/passwd')`를 실행하려 한다
+- **THEN** "허용하지 않은 함수" 오류로 거부된다
+
+#### Scenario: 사용자 변수
+- **WHEN** 사용자 변수를 읽거나 값을 대입하는 SQL을 실행하려 한다
+- **THEN** "허용하지 않은 함수" 오류로 거부되고, 원인에 "사용자 변수"가 있다
+
+#### Scenario: LAST_INSERT_ID
+- **WHEN** LAST_INSERT_ID를 부르는 SQL을 실행하려 한다
 - **THEN** "허용하지 않은 함수" 오류로 거부된다
 
 ### Requirement: 행 수 상한 (F-003)
@@ -158,9 +170,25 @@ SQL이 읽는 모든 테이블(서브쿼리, 조인, CTE 안 포함)은 설정�
 - **WHEN** DB가 꺼진 상태에서 SQL을 실행한다
 - **THEN** "연결 실패" 오류가 돌아오고, 확인할 곳에 연결 상태 확인이 있다
 
+### Requirement: LLM에 보낼 실행 오류 (F-003)
+
+LLM에 보낼 실행 오류는 실행 오류에서 DB가 알려 준 오류 내용 원문을 뺀 것이어야 한다(SHALL). DB 오류의 원문에는 컬럼 값이 담길 수 있기 때문이다. DB 오류는 오류 종류, 한국어 메시지, DB 오류 코드와 SQLState만 남긴다. 검사와 상한에 걸린 오류는 SQL과 설정에서 온 원인(거부한 테이블·함수 이름, 상한 값)을 남긴다. 화면에 보이는 실행 오류는 원문을 그대로 둔다.
+
+#### Scenario: 값을 담은 DB 오류
+- **WHEN** 인자 값을 오류 메시지에 넣는 함수에 개인정보 컬럼을 넘겨 DB 오류가 난 SQL의 실행 오류로 LLM에 보낼 오류를 만든다
+- **THEN** LLM에 보낼 오류에는 "DB 오류", 한국어 메시지, DB 오류 코드와 SQLState가 있고, 그 컬럼 값과 DB가 알려 준 오류 내용 원문은 어디에도 없다
+
+#### Scenario: 화면용 오류는 그대로
+- **WHEN** DB 오류가 난 SQL을 실행한다
+- **THEN** 실행 오류 자체의 원인에는 DB가 알려 준 오류 내용이 남고, LLM에 보낼 오류에서만 빠진다
+
+#### Scenario: 검사에 걸린 오류
+- **WHEN** 허용하지 않은 테이블을 읽는 SQL의 실행 오류로 LLM에 보낼 오류를 만든다
+- **THEN** LLM에 보낼 오류에는 "허용하지 않은 테이블"과 그 테이블 이름이 남는다
+
 ### Requirement: 개인정보 컬럼 값은 LLM에 보내지 않음 (F-003)
 
-LLM에 보낼 결과는 실행 결과에서 개인정보 컬럼의 값이 담긴 열을 뺀 것이어야 한다(SHALL). 개인정보 컬럼을 그대로 고르거나, 별칭을 붙이거나, 집계가 아닌 함수로 바꾼 열, `SELECT *`로 들어온 열은 모두 개인정보 열로 본다. 개인정보 컬럼을 COUNT 안에서만 쓴 열은 개인정보 열로 보지 않는다. MIN, MAX, GROUP_CONCAT처럼 원래 값을 돌려줄 수 있는 집계는 개인정보 열로 본다. 어디서 온 열인지 알 수 없으면 개인정보 열로 본다. 뺀 열은 이름만 남긴다.
+LLM에 보낼 결과에는 안전하다고 확인된 열만 넣어야 한다(SHALL). 안전한 열은 재료가 모두 리터럴이거나 허용 테이블의 일반 컬럼(설정한 개인정보 컬럼도 생성 컬럼도 아닌 기본 테이블 컬럼)이고, 쓴 함수가 모두 내장 함수 허용 목록에 있는 열이다. 서브쿼리와 CTE를 거친 열은 그 안의 열이 안전할 때만 안전하다. COUNT 안에서만 쓴 재료는 안전 여부를 따지지 않는다. 그 밖의 열은 모두 개인정보 열로 본다. 개인정보 컬럼을 그대로 고르거나 별칭이나 함수로 바꾼 열, `SELECT *`로 들어온 개인정보 컬럼, MIN·MAX·GROUP_CONCAT처럼 원래 값을 돌려줄 수 있는 집계, 뷰에서 온 열, 생성 컬럼, 허용 목록 밖의 함수(저장 함수 포함)를 쓴 열, 어디서 왔는지 확인하지 못한 열이 여기에 든다. 뷰, 생성 컬럼, 컬럼 목록은 실행할 때마다 DB에서 확인하고, 그 목록에서 찾지 못한 이름은 확인하지 못한 것으로 본다. 뺀 열은 이름만 남긴다.
 
 #### Scenario: 개인정보 컬럼을 그대로 고름
 - **WHEN** 개인정보 컬럼 `customers.customer_zip_code_prefix`와 `customer_state`를 고르는 SQL의 결과로 LLM에 보낼 결과를 만든다
@@ -184,6 +212,38 @@ LLM에 보낼 결과는 실행 결과에서 개인정보 컬럼의 값이 담긴
 
 #### Scenario: 서브쿼리를 거친 열
 - **WHEN** `SELECT z FROM (SELECT customer_zip_code_prefix AS z FROM customers) t`처럼 서브쿼리나 CTE를 거쳐 개인정보 컬럼을 고른다
+- **THEN** 그 열은 LLM에 보낼 결과에서 빠진다
+
+#### Scenario: 허용 목록 안의 함수
+- **WHEN** 개인정보가 아닌 컬럼을 날짜·문자열·숫자 내장 함수나 SUM, AVG로 계산한 열을 고른다
+- **THEN** 그 열은 LLM에 보낼 결과에 남는다
+
+#### Scenario: 허용 목록 밖의 함수
+- **WHEN** 내장 함수 허용 목록에 없는 함수를 쓴 열을 고른다
+- **THEN** 재료와 상관없이 그 열은 LLM에 보낼 결과에서 빠진다
+
+#### Scenario: 확인하지 못한 이름
+- **WHEN** 실행할 때 확인한 컬럼 목록에서 찾지 못한 이름으로 컬럼을 쓴 열을 고른다
+- **THEN** 그 열은 LLM에 보낼 결과에서 빠진다
+
+#### Scenario: 뷰에서 온 열
+- **WHEN** 개인정보 컬럼 `customers.customer_zip_code_prefix`를 `region_code`라는 이름으로 내보내는 뷰에서 `customer_id`와 `region_code`를 고른다. 설정의 개인정보 컬럼에는 원래 테이블의 컬럼만 적었다
+- **THEN** 두 열 모두 LLM에 보낼 결과에서 빠지고, 실행 결과에는 남는다
+
+#### Scenario: 뷰의 행 수
+- **WHEN** 뷰에서 `COUNT(*)`만 고른다
+- **THEN** 그 열은 LLM에 보낼 결과에 남는다
+
+#### Scenario: 생성 컬럼
+- **WHEN** 테이블의 생성 컬럼을 고른다. 개인정보 컬럼으로 계산하지 않는 생성 컬럼도 같다
+- **THEN** 그 열은 LLM에 보낼 결과에서 빠진다
+
+#### Scenario: 실행 사이에 바뀐 스키마
+- **WHEN** 한 번 실행한 뒤 연결 확인 없이 생성 컬럼이나 뷰가 새로 생기고, 그 열을 고른다
+- **THEN** 그 열은 LLM에 보낼 결과에서 빠진다
+
+#### Scenario: 저장 함수
+- **WHEN** 설정한 스키마의 저장 함수를 부른 열을 고른다
 - **THEN** 그 열은 LLM에 보낼 결과에서 빠진다
 
 #### Scenario: 화면용 결과는 그대로

@@ -41,6 +41,7 @@ interface DataSourceConnector {
 }
 sealed interface ExecutionOutcome { data class Success(val result: QueryResult); data class Failure(val error: ExecutionError) }
 class QueryResult(columns, rows, rowCount, elapsed, executedSql) { fun forLlm(): LlmSafeResult }
+class ExecutionError(kind, message, cause, checkPoints, dbErrorCode, sqlState) { fun forLlm(): LlmSafeError }
 ```
 
 `execute` 말고 SQL 문자열을 받아 실행하는 공개 메서드는 두지 않는다. 연결 확인의 고정 조회(`SHOW GRANTS`, `information_schema` 조회)는 구현체 안의 private 코드다.
@@ -80,11 +81,12 @@ askflow:
 
 ### 4. 세션: 읽기 전용, DB와 앱 양쪽 시간 상한
 
-- HikariCP `readOnly = true`, `autoCommit = false`, 풀 크기 4, `connectionTimeout` 3초. `initializationFailTimeout = -1`로 두어 DB가 없어도 풀 생성이 실패하지 않는다(앱은 뜬다).
-- `connectionInitSql`: `SET SESSION TRANSACTION READ ONLY, SESSION max_execution_time = <ms>`.
-- 실행마다 읽기 전용 트랜잭션을 열고 끝나면 rollback한다.
+- HikariCP `autoCommit = false`, 풀 크기 4, `connectionTimeout` 3초. `initializationFailTimeout = -1`로 두어 DB가 없어도 풀 생성이 실패하지 않는다(앱은 뜬다).
+- `connectionInitSql`: `SET SESSION transaction_read_only = ON, SESSION max_execution_time = <ms>`. `SET SESSION TRANSACTION READ ONLY`는 다른 변수와 한 문에 묶을 수 없다.
+- 읽기 전용은 DB 세션에 건다. 풀의 JDBC `readOnly`는 끄고 Connector/J `readOnlyPropagatesToServer=false`를 둔다. JDBC `readOnly`를 풀에 켜면 드라이버가 쓰기를 먼저 거부해 세션 겹을 따로 확인할 수 없고, 반납 때 풀이 `readOnly`를 되돌리며 서버에 `READ WRITE`를 보낼 수 있다.
+- 실행마다 JDBC `readOnly`를 켜(드라이버 쪽 검사, 서버로는 보내지 않음) 세션의 읽기 전용 트랜잭션에서 실행하고 끝나면 rollback한다.
 - 앱 쪽 상한: `Statement.queryTimeout`을 상한 + 1초로, `maxRows`를 `maxRows + 1`로 건다. LIMIT 다시 쓰기가 빠져도 가져오는 행 수가 묶인다.
-- 오류 분류: MySQL 3024(`max_execution_time` 초과)와 `SQLTimeoutException`은 실행 시간 상한 초과, 행이 `maxRows`를 넘으면 행 수 상한 초과, 통신 오류(SQLState `08*`)는 연결 실패, 그 밖은 DB 오류(MySQL 메시지를 원인에 담는다).
+- 오류 분류: MySQL 3024(`max_execution_time` 초과)와 `SQLTimeoutException`은 실행 시간 상한 초과, 행이 `maxRows`를 넘으면 행 수 상한 초과, 통신 오류(SQLState `08*`)는 연결 실패, 그 밖은 DB 오류(MySQL 메시지를 원인에, 오류 코드와 SQLState를 따로 담는다). 원인의 MySQL 메시지는 화면용이고 LLM에는 보내지 않는다(7장).
 
 ### 5. 권한 확인은 `SHOW GRANTS FOR CURRENT_USER()`
 
@@ -103,8 +105,23 @@ askflow:
 
 - **해석 트리:** 최상위 SELECT 항목마다 참조한 컬럼을 별칭으로 테이블까지 풀고, 서브쿼리·CTE는 그 안의 SELECT 항목 별칭으로 이어 간다. 개인정보 컬럼을 COUNT 밖에서 참조하면 개인정보 열이다. 테이블 없이 쓴 컬럼은 FROM의 어느 테이블에든 같은 이름의 개인정보 컬럼이 있으면 개인정보로 본다. `*`, 풀 수 없는 경우는 개인정보로 본다(fail-closed).
 - **JDBC 메타데이터:** Connector/J의 `getTableName`/`getColumnName`(원래 테이블·컬럼)이 개인정보 컬럼이면 개인정보 열이다. `SELECT *`는 이 쪽이 정확하다.
+- **뷰와 생성 컬럼, 저장 함수:** 정의를 따라가지 않고 모두 개인정보로 본다. 처음(6.4)에는 뷰 정의와 생성식을 해석 트리로 따라갔으나, 바깥 스키마의 뷰, 저장 함수, 이름에 점이 든 뷰 열, 확인 사이에 바뀐 정의처럼 놓치는 경우가 검토마다 나와(7.1 3차 검토) fail-closed로 바꿨다.
+  - 실행할 때마다 같은 연결에서 `information_schema`를 한 번 조회해 설정 스키마의 뷰 이름, 생성 컬럼(`GENERATION_EXPRESSION`이 빈 문자열이 아닌 컬럼), 저장 함수 이름을 읽는다. 읽지 못하면 실행하지 않고 연결 실패를 돌려준다.
+  - 해석 트리: 뷰를 출처로 둔 열은 모든 컬럼이 개인정보 컬럼인 테이블에서 온 것으로 본다(COUNT 예외는 그대로). 생성 컬럼은 개인정보 컬럼으로 본다. 저장 함수나 스키마를 붙인 함수를 부른 항목은 개인정보로 본다.
+  - JDBC 메타데이터: `getTableName`이 뷰 이름이거나 (테이블, 컬럼)이 생성 컬럼이면 개인정보로 본다.
+  - 테이블과 컬럼은 `"table.column"` 문자열이 아니라 쌍으로 다룬다. 이름에 점이 들어갈 수 있다.
+  - 대가: 뷰의 값은 LLM 서술에 쓰지 못한다(화면에는 보인다). Olist에는 뷰가 없다. 파일럿에서 꼭 필요하면 운영자가 안전한 열을 직접 적는 설정을 MVP 이후에 둔다.
+- **판정 방향: 안전이 확인된 열만 보낸다.** 처음에는 개인정보 컬럼을 찾으면 가리고 못 찾으면 안전으로 봤다. 그래서 판정기가 모르는 문법이나 이름을 만나면 늘 새는 쪽으로 틀렸고, 검토마다 새 우회가 나왔다(7.1 4차 검토). 기본값을 "가림"으로 뒤집는다.
+  - 해석 트리: 열이 안전하려면 모든 잎이 리터럴이거나 확인된 일반 컬럼이고, 모든 함수가 내장 함수 허용 목록(`guard`에 코드로 둔다)에 있어야 한다. 해석 트리에서 처음 보는 노드는 안전하지 않다. COUNT는 지금처럼 예외다.
+  - 허용 목록: 분석에 흔한 날짜, 문자열, 숫자, 조건(CASE, IF, COALESCE 등), 형 변환, SUM·AVG·COUNT 같은 값을 숨기는 집계, 순위 창 함수로 시작한다. 값을 그대로 돌려줄 수 있는 집계(MIN, MAX, GROUP_CONCAT 등)는 넣지 않는다. 이미 커밋된 테스트가 안전으로 보는 함수는 넣는다. 평가 세트에서 많이 가려지면 스펙 검토를 거쳐 늘린다.
+  - 컬럼 확인: 실행마다 읽는 `information_schema` 조회에 허용 테이블의 컬럼 목록을 더한다. SQL에 쓴 이름은 대소문자만 무시하고 목록과 맞춘다. 맞는 것이 없으면 확인하지 못한 컬럼이다. 이름 비교를 MySQL의 식별자 규칙에 맞추려 하지 않는다. 목록과 맞지 않는 이름은 모두 가리므로, MySQL이 비슷한 이름을 같은 것으로 찾더라도 판정을 비껴가지 못한다.
+  - 출처 이름: 테이블과 CTE 이름은 서버 설정(`lower_case_table_names`)에 따라 대소문자 구분이 달라진다. 실행 때 읽은 테이블 목록이나 CTE 이름과 대소문자까지 같으면 그 출처로 보고, 대소문자만 다르게 맞으면 확인하지 못한 출처로 보아 그 출처의 열을 모두 가린다. 정확히 같은 CTE가 있어도 보이는 범위(바깥 범위 포함)에 대소문자만 다른 CTE가 함께 있으면 MySQL이 어느 쪽을 읽을지 서버 설정에 달려 있으니 가린다. LATERAL 파생 테이블은 같은 FROM의 앞쪽 출처를 먼저 찾는 규칙이 있어, 그 안의 열은 확인하지 못한 것으로 보고 가린다.
+  - 컬럼 목록을 넘기지 않는 생성 경로(확인을 건너뜀)는 단위 테스트용이다. 실행 경로가 반드시 목록을 넘기는지는 커넥터 수준 테스트로 지킨다.
+  - 검사기: 사용자 변수(읽기, 대입)와 LAST_INSERT_ID를 거부한다. 다른 스키마 비교는 대소문자를 구분해 정확히 같은 이름만 허용한다.
+  - 기본값이 `DEFAULT (식)`인 컬럼은 생성 컬럼이 아니라 일반 컬럼으로 보인다. 개인정보 컬럼을 복사해 두는 컬럼이 있으면 운영자가 설정의 개인정보 컬럼에 적어야 한다(README에 적는다).
 - 두 방법 중 하나라도 개인정보라고 하면 가린다. `*`는 해석 트리에서 "알 수 없음"이 되므로, `*` 확장 열은 메타데이터로 판정하고 메타데이터도 비어 있으면 가린다.
 - `QueryResult.forLlm()`이 `LlmSafeResult`를 만드는 유일한 방법이다. F-002의 `LlmClient`는 `QueryResult`가 아니라 `LlmSafeResult`만 받게 한다.
+- **오류도 같다.** MySQL은 일부 함수(예: `GTID_SUBSET`)에서 인자 값을 오류 메시지에 그대로 넣는다. 그래서 DB 오류 원문은 개인정보 값을 담을 수 있다. `ExecutionError.forLlm()`이 `LlmSafeError`(생성자 internal)를 만드는 유일한 방법이다. DB 오류는 종류, 한국어 메시지, 오류 코드, SQLState만 남기고 MySQL 메시지 원문은 버린다. 값을 내보내는 함수를 거부 목록으로 하나씩 막는 방식은 빠지는 함수가 생기므로 쓰지 않는다. 검사·상한 오류의 원인(거부한 테이블·함수 이름, 상한 값)은 SQL과 설정에서 온 것이라 남긴다. F-002의 SQL 수정 루프는 `ExecutionError`가 아니라 `LlmSafeError`만 받는다.
 
 ### 8. API와 화면
 
@@ -122,13 +139,14 @@ askflow:
 | 홈 연결 상태 네 가지 | `web/src/connection/*.test.tsx` | Vitest + Testing Library, `fetch` 가짜 | `npm --prefix web run test` |
 
 - 테스트 이름에 `F-003`과 시나리오 이름을 넣는다(하네스 2-3).
-- 시간 상한 테스트는 SLEEP이 막히므로, 큰 테스트 테이블의 교차 조인(`SELECT COUNT(*) FROM numbers a, numbers b, numbers c`)으로 느린 쿼리를 만든다.
+- 시간 상한 테스트는 SLEEP이 막히므로, 큰 테스트 테이블의 교차 조인으로 느린 쿼리를 만든다. MySQL 8.4는 조건 없는 교차 조인의 `COUNT(*)`를 행 수 곱으로 바로 계산하므로, 행을 실제로 훑는 `SELECT SUM(a.n + b.n + c.n) FROM numbers a, numbers b, numbers c`를 쓴다.
 - **평가 세트 정답률:** 평가 세트는 아직 없어(F-002) 이번에 잴 것이 없다. 다만 검사가 보수적이라 F-002에서 맞는 SQL을 거부할 수 있다(예: JSqlParser가 모르는 MySQL 구문). F-002 평가에서 "검사 거부"를 실패 이유로 따로 세어 확인한다.
 
 ## Risks / Trade-offs
 
 - [JSqlParser가 일부 MySQL 구문을 모른다] → 해석 실패로 막히므로 안전 쪽이다. F-002 평가에서 거부 비율을 보고, 필요하면 생성 프롬프트에서 그 구문을 피하게 한다.
 - [다시 쓴 SQL이 원문과 뜻이 다를 수 있다] → 통합 테스트에서 대표 쿼리(CTE, UNION, 윈도 함수, 날짜 함수)를 원문과 다시 쓴 문장으로 각각 실행해 결과를 비교한다.
+- [LLM에 보낼 DB 오류에 원문이 없어 F-002의 SQL 고치기가 어려워진다] → 오류 코드로 원인 종류(없는 컬럼 1054, 없는 테이블 1146, 문법 1064 등)는 알 수 있다. 부족하면 F-002에서 식별자만 담는 오류 코드에 한해 메시지를 남기는 허용 목록을 스펙으로 정한다.
 - [개인정보 추적이 넉넉해 필요한 열까지 가린다] → 가리는 쪽이 안전하다. 서술 품질이 떨어지면 F-004에서 보고, 규칙은 스펙을 고쳐 바꾼다.
 - [권한 확인이 역할·프록시 권한을 다 보지 못한다] → 경고를 남겨 사람이 확인하게 한다. 첫 겹(계정)이 무너져도 세션과 검사가 막는다.
 - [연결 상태를 조회마다 확인해 DB에 부담] → 홈을 열 때만 부르고 쿼리가 가볍다. 문제가 되면 짧은 캐시를 둔다.

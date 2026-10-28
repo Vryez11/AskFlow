@@ -2,6 +2,19 @@ spring:
   application:
     name: askflow-api
 
+# 분석 대상 DB (design 2장). 파일럿은 회사별 설정 파일을 SPRING_CONFIG_ADDITIONAL_LOCATION으로 덧붙인다
+askflow:
+  target-db:
+    url: jdbc:mysql://localhost:${MYSQL_PORT:3306}/olist
+    schema: olist
+    username: askflow_reader
+    # 비밀번호는 늘 환경 변수로 받는다. 없으면 앱은 뜨고 연결 상태만 "연결 실패"가 된다
+    password: ${ASKFLOW_READER_PASSWORD:}
+    allowed-tables: []          # 비우면 스키마의 모든 테이블·뷰
+    pii-columns: []             # "table.column"
+    max-rows: 1000
+    query-timeout: 10s
+
 management:
   endpoints:
     web:

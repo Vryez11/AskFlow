@@ -1,0 +1,26 @@
+# pipeline
+
+- 순수 Kotlin 모듈이다. Spring 라이브러리는 쓰지 않는다. 의존성 버전만 Spring Boot BOM(`platform(...)`)에 맞춘다. BOM에 없는 것(JSqlParser)은 버전을 직접 적는다.
+- 테스트는 두 곳이다. `src/test`는 순수 단위 테스트로 Stop 훅의 `:pipeline:test`가 돌리니 빠르게 둔다. MySQL이 필요한 테스트는 `src/integrationTest`(Testcontainers, `:pipeline:integrationTest`, `check`에 묶임)에 둔다.
+- `build.gradle.kts`의 `testing.suites` 블록 안에서는 `platform()`, `kotlin("test")`를 못 쓴다. 통합 테스트 의존성은 바깥 `dependencies`에 `"integrationTestImplementation"(...)`로 적는다. 거기서도 `kotlin("test")`는 JUnit 5 변형이 골라지지 않으니 `kotlin("test-junit5")`를 쓴다.
+- `integrationTest` 컴파일은 `associateWith(main)`으로 묶여 있어 main의 `internal`을 볼 수 있다.
+- 통합 테스트의 MySQL·테스트용 스키마·계정은 `src/integrationTest`의 `TestMySql`(처음 쓸 때 한 번 띄움)에 모아 둔다. 새 통합 테스트도 이것을 쓴다. 공용 컨테이너는 멈추지 않는다. DB가 꺼졌다 살아나는 상황은 `TcpForwarder`(정해 둔 포트를 나중에 열어 DB로 잇는 중계)로 만든다.
+- JSqlParser 5.3은 `LOCK IN SHARE MODE`, `INTO OUTFILE`/`DUMPFILE`/`@변수`를 해석하지 못하고(해석 실패), `/*! */` 실행 주석은 조용히 버린다. 이런 구문을 다른 오류 종류로 거부하려면 해석 전에 원문을 따로 검사해야 한다.
+- JSqlParser 5.3은 괄호 없는 UNION 끝의 `LIMIT`(MySQL에서는 UNION 전체에 걸림)을 `SetOperationList`가 아니라 마지막 `PlainSelect`에 붙인다. `(…) UNION (…) LIMIT n`일 때만 `SetOperationList.limit`에 붙는다. 최상위 LIMIT을 볼 때 두 곳을 다 봐야 하고, 둘 다 채우면 `LIMIT`이 두 번 찍힌다.
+- 해석 전 원문 검사는 `guard/RawSqlScanner`에 있다(실행 주석·힌트, 잠금·`INTO`). 리터럴·주석을 공백으로 바꾼 뒤 찾으니 서브쿼리 안까지 잡힌다. 리터럴과 주석은 꼭 같은 규칙(`skipEnd`)으로 건너뛴다. 주석 안 따옴표를 리터럴로 보면 뒤의 힌트를 놓친다. `SqlGuard`는 다시 쓴 문장도 한 번 더 스캔한다.
+- JSqlParser의 `TablesNamesFinder`와 visitor 어댑터는 일부 노드를 건너뛴다(예: `>` 비교식 안 서브쿼리). 검사용으로 트리를 훑을 때는 `guard/ReferenceCollector`(필드를 리플렉션으로 모두 따라감)를 쓰고, 새로 훑는 코드는 `guard/JsqlTree`(필드 목록, 잎 노드, 따옴표 벗기기)를 같이 쓴다. JSqlParser 소스가 필요하면 Gradle 캐시는 샌드박스 밖이니 init 스크립트로 `jsqlparser:5.3:sources`를 `build/` 아래에 풀어 본다.
+- Kotlin 주석은 중첩된다. KDoc이나 `/* */` 주석에 `/*!` 같은 SQL 주석 모양을 쓰면 주석이 닫히지 않아 컴파일이 깨진다.
+- DB에 닿는지 단위 테스트로 보려면 `MySqlConnector`의 internal 생성자에 `src/test`의 `RecordingDataSource`(보낸 SQL을 기록하는 가짜 JDBC)를 넣는다.
+- 읽기 전용은 DB 세션(`connectionInitSql`의 `transaction_read_only = ON`)에 건다. 풀의 JDBC `readOnly`를 켜거나 Connector/J `readOnlyPropagatesToServer`를 켜면 반납 때 `SET SESSION TRANSACTION READ WRITE`가 나가 세션이 쓰기 가능해진다(`ReadOnlySessionIT`가 막는다).
+- MySQL 8.4는 조건 없는 교차 조인의 `COUNT(*)`를 행 수 곱으로 바로 계산한다. 느린 쿼리가 필요하면 행을 실제로 훑게 만들어야 한다.
+- Connector/J 메타데이터의 `getColumnLabel`은 별칭, `getTableName`·`getColumnName`은 원래 테이블·컬럼이다. 계산한 열은 둘 다 빈 문자열이다. 결과 열의 개인정보 표시는 `mysql/PiiColumnMarker`가 `PiiLineage` 판정과 이 메타데이터를 합쳐 정한다.
+- HikariCP는 연결을 못 얻으면 안쪽 예외를 원인으로 감싼 `SQLTransientConnectionException`을 던지고 안쪽 SQLState를 그대로 옮긴다. 예외를 분류할 때는 바깥 종류가 아니라 원인 사슬의 오류 코드부터 본다(`mysql/ConnectionFailureClassifier`).
+- LLM에는 `QueryResult.forLlm()`(`LlmSafeResult`)과 `ExecutionError.forLlm()`(`LlmSafeError`)만 보낸다. 둘 다 생성자가 internal이다. MySQL 오류 메시지는 함수 인자 값(예: `GTID_SUBSET`)을 담을 수 있어 `LlmSafeError`에는 DB 오류의 원인을 넣지 않는다.
+- 뷰, 생성 컬럼, 저장 함수는 정의를 따라가지 않고 모두 개인정보로 본다(`guard/PiiSchemaObjects`). 정의 추적은 검토마다 빠지는 경우가 나와 걷어 냈으니 다시 넣지 않는다. `MySqlConnector`는 실행마다 같은 연결에서 `information_schema`로 이 목록을 읽어 `PiiLineage`와 `PiiColumnMarker`에 넘기고, 읽지 못하면 실행하지 않는다. 캐시하지 않는다. 테이블·컬럼은 `"table.column"` 문자열이 아니라 쌍으로 다룬다(설정 값만 `piiColumnPairs`로 나눈다).
+- 개인정보 판정은 "안전이 확인된 열만 보낸다"(fail-closed)다. `PiiLineage`는 해석 트리에서 `guard/BuiltinAllowList`(내장 함수, 리터럴, 재료를 섞기만 하는 노드)에 없는 것을 만나면 개인정보로 본다. 새 문법을 안전으로 보려면 허용 목록에 더하되 스펙 검토를 거친다. 컬럼은 실행마다 읽은 `information_schema.COLUMNS` 목록에서 대소문자만 무시하고 찾고, 못 찾으면 개인정보다. 단위 테스트의 `PiiSchemaObjects(columns = null)`은 컬럼 확인을 건너뛰는 모드이고 커넥터는 늘 목록을 넘긴다.
+- JSqlParser 5.3 해석 함정: `TIMESTAMPDIFF(DAY, …)`의 단위는 `Column`으로, `CONVERT(a, CHAR)`는 `TranscodingFunction`으로 읽힌다. `OVER w`(이름 붙인 창)의 정의는 창 함수 노드에 붙지 않고 `PlainSelect.windowDefinitions`에 있다. `@x`와 `@@x`는 같은 `UserVariable`(`isDoubleAdd`로 나눈다)이다.
+- Linux MySQL에서 테이블 별칭과 테이블 이름은 대소문자를 가린다(컬럼 이름은 가리지 않는다). 컬럼 이름은 악센트까지 다르면 MySQL도 찾지 못한다(1054).
+- `PiiLineage`에서 출처(테이블, CTE) 이름이 실행 때 읽은 목록(`PiiSchemaObjects.isExactTable`)이나 CTE 이름과 대소문자만 다르게 맞으면 `Source.Unknown`(모든 열 가림)이다. 이름이 정확히 같은 CTE가 있어도 대소문자만 다른 CTE가 (바깥 범위까지) 함께 보이면 `Unknown`이다. LATERAL 파생 테이블(JSqlParser `LateralSubSelect`)도 `Unknown`이다. 이름 찾기 규칙을 MySQL처럼 흉내 내지 말고 확인하지 못하면 가린다.
+- 실행 경로가 판정기에 목록을 넘기는지는 `src/test`의 `mysql/ExecutionColumnListTest`(목록 조회와 결과를 돌려주는 가짜 JDBC)가 지킨다. 커넥터 수준 단위 테스트가 필요하면 이 가짜를 본뜬다.
+- 통합 테스트가 테이블·뷰를 더해야 하면 공용 스키마 `olist`가 아니라 따로 만든 스키마에 둔다. `ConnectionCheckIT`가 `olist`의 테이블 수를 센다(예: `PiiViewIT`의 `pii_views`).
+- 분석 대상 DB 코드는 `io.askflow.pipeline.datasource`(공개 타입), `.guard`(SQL 검사), `.mysql`(구현체)에 둔다.
