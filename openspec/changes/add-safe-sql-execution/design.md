@@ -80,9 +80,10 @@ askflow:
 
 ### 4. 세션: 읽기 전용, DB와 앱 양쪽 시간 상한
 
-- HikariCP `readOnly = true`, `autoCommit = false`, 풀 크기 4, `connectionTimeout` 3초. `initializationFailTimeout = -1`로 두어 DB가 없어도 풀 생성이 실패하지 않는다(앱은 뜬다).
-- `connectionInitSql`: `SET SESSION TRANSACTION READ ONLY, SESSION max_execution_time = <ms>`.
-- 실행마다 읽기 전용 트랜잭션을 열고 끝나면 rollback한다.
+- HikariCP `autoCommit = false`, 풀 크기 4, `connectionTimeout` 3초. `initializationFailTimeout = -1`로 두어 DB가 없어도 풀 생성이 실패하지 않는다(앱은 뜬다).
+- `connectionInitSql`: `SET SESSION transaction_read_only = ON, SESSION max_execution_time = <ms>`. `SET SESSION TRANSACTION READ ONLY`는 다른 변수와 한 문에 묶을 수 없다.
+- 읽기 전용은 DB 세션에 건다. 풀의 JDBC `readOnly`는 끄고 Connector/J `readOnlyPropagatesToServer=false`를 둔다. JDBC `readOnly`를 풀에 켜면 드라이버가 쓰기를 먼저 거부해 세션 겹을 따로 확인할 수 없고, 반납 때 풀이 `readOnly`를 되돌리며 서버에 `READ WRITE`를 보낼 수 있다.
+- 실행마다 JDBC `readOnly`를 켜(드라이버 쪽 검사, 서버로는 보내지 않음) 세션의 읽기 전용 트랜잭션에서 실행하고 끝나면 rollback한다.
 - 앱 쪽 상한: `Statement.queryTimeout`을 상한 + 1초로, `maxRows`를 `maxRows + 1`로 건다. LIMIT 다시 쓰기가 빠져도 가져오는 행 수가 묶인다.
 - 오류 분류: MySQL 3024(`max_execution_time` 초과)와 `SQLTimeoutException`은 실행 시간 상한 초과, 행이 `maxRows`를 넘으면 행 수 상한 초과, 통신 오류(SQLState `08*`)는 연결 실패, 그 밖은 DB 오류(MySQL 메시지를 원인에 담는다).
 
