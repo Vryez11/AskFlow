@@ -91,7 +91,7 @@ H1~H6과 검증 방법은 [STEP 1 검증 보고서](01-idea-validation.md#8-mvp�
 | 개발 흐름 | OpenSpec 스펙을 기준으로, 하네스 6가지가 환경과 검사를 갖추고 루프 3겹(안쪽, Ralph 바깥 루프, 검토)이 구현하는 흐름. Ralph는 OpenSpec tasks.md를 읽는다 | 2026-10-27 |
 | 브랜치 | `main`은 배포 가능, `develop`에서 개발, change마다 `change/<change-id>` ([브랜치 컨벤션](../../conventions/branch.md)) | 2026-10-27 |
 | 기술 스택 | 백엔드 Spring Boot(Kotlin), 프론트엔드 React, DB MySQL. 빌드 도구와 React 구성 같은 세부는 STEP 5 아키텍처 문서에서 정한다 | 2026-10-27 |
-| LLM | Claude API(공식 Java SDK). 기본 모델은 Claude Opus 5.5이고, 단계별 모델과 effort는 평가 세트로 비교해 정한다 | 2026-10-27 |
+| LLM | 공급자는 `LlmClient` 뒤에 두고 설정으로 바꾼다. 개발·평가는 Gemini API 무료 등급(Gemini 3.8 Flash)으로 시작하고, 파일럿은 유료 등급 공급자만 쓰며 어느 공급자인지는 평가 세트로 정한다. 공급자가 계속 실패하면 서킷 브레이커가 다음 공급자로 넘기고 살아나면 되돌린다([아키텍처 7장](05-architecture.md#7-llm-연동)). 처음(2026-10-27)에는 Claude API로 정했으나, 가진 크레딧이 Claude Code 클라우드 세션용이라 앱의 API 호출에 쓸 수 없어 바꿨다 | 2026-10-28 |
 | Olist 날짜 | 시드할 때 마지막 주문일이 어제가 되도록 7일 단위로 옮긴다 | 2026-10-27 |
 | 하네스 공유 | `.claude/settings.json`(권한·훅)만 커밋하고, 개인 설정과 OpenSpec 명령·스킬은 제외한다. web 패키지 매니저는 npm | 2026-10-27 |
 
