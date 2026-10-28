@@ -4,6 +4,8 @@ import io.askflow.pipeline.datasource.ConnectionStatus
 import io.askflow.pipeline.datasource.DataSourceConnector
 import io.askflow.pipeline.datasource.ExecutionOutcome
 import io.askflow.pipeline.datasource.TargetDbConfig
+import io.askflow.pipeline.datasource.guard.GuardResult
+import io.askflow.pipeline.datasource.guard.SqlGuard
 import javax.sql.DataSource
 
 /**
@@ -16,7 +18,14 @@ class MySqlConnector internal constructor(
 ) : DataSourceConnector {
     constructor(config: TargetDbConfig) : this(config, createPool(config))
 
-    override fun execute(sql: String): ExecutionOutcome = TODO()
+    // 빈 허용 목록이면 연결 확인에서 읽은 스키마 테이블을 쓴다 (3.5)
+    private val guard = SqlGuard(config.schema, config.allowedTables.toSet(), config.maxRows)
+
+    override fun execute(sql: String): ExecutionOutcome =
+        when (val checked = guard.check(sql)) {
+            is GuardResult.Rejected -> ExecutionOutcome.Failure(checked.error)
+            is GuardResult.Passed -> TODO()
+        }
 
     override fun checkConnection(): ConnectionStatus = TODO()
 

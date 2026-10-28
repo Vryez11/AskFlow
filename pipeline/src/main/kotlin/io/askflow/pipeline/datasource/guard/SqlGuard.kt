@@ -17,6 +17,8 @@ class SqlGuard(
     private val allowedTables: Set<String>,
     private val maxRows: Int,
 ) {
+    private val allowedLowercase = allowedTables.map { it.lowercase() }.toSet()
+
     fun check(sql: String): GuardResult {
         RawSqlScanner.findExecutableComment(sql)?.let {
             return reject(ExecutionErrorKind.NOT_SELECT, "MySQL이 실행하는 주석이나 힌트가 있습니다.", it)
@@ -48,8 +50,24 @@ class SqlGuard(
             )
         }
 
+        val references = ReferenceCollector.collect(statement)
+        references.nestedNonSelect?.let {
+            return reject(ExecutionErrorKind.NOT_SELECT, "SELECT 조회만 실행할 수 있습니다.", it)
+        }
+        references.tables.firstOrNull { !isAllowed(it) }?.let {
+            return reject(ExecutionErrorKind.TABLE_NOT_ALLOWED, "조회를 허용하지 않은 테이블입니다.", it.written)
+        }
+        references.functions.firstOrNull { it.substringAfterLast('.').uppercase() in DENIED_FUNCTIONS }?.let {
+            return reject(ExecutionErrorKind.FUNCTION_NOT_ALLOWED, "실행을 허용하지 않은 함수입니다.", it)
+        }
+
         return GuardResult.Passed(statement.toString())
     }
+
+    private fun isAllowed(table: ReferenceCollector.TableRef): Boolean =
+        !table.hasCatalog &&
+            (table.schema == null || table.schema.equals(schema, ignoreCase = true)) &&
+            table.name.lowercase() in allowedLowercase
 
     private fun parseCause(e: JSQLParserException): String = (e.cause?.message ?: e.message ?: "해석 오류").lineSequence().first()
 
@@ -61,6 +79,9 @@ class SqlGuard(
 
     private companion object {
         val CHECK_POINTS = listOf("실행하려던 SQL")
+
+        /** 잠그거나, 오래 붙잡거나, 서버 파일을 읽는 함수 */
+        val DENIED_FUNCTIONS = setOf("SLEEP", "BENCHMARK", "LOAD_FILE", "GET_LOCK", "RELEASE_LOCK", "RELEASE_ALL_LOCKS")
     }
 }
 
