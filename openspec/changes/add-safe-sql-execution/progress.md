@@ -18,6 +18,7 @@
 - api 모듈 규칙은 `api/CLAUDE.md`에 있다. api 코드는 `io.askflow.api.connection`: `TargetDbProperties.toConfig()`, `TargetDbConfiguration`(빈 `TargetDbConfig`, `DataSourceConnector`), `TermCountProvider`/`ZeroTermCountProvider`, `ConnectionStatusController`와 `ConnectionStatusResponse`(`failure.reason`은 enum 이름 문자열, 예: `"AUTHENTICATION"`). 본문은 `TODO()`다.
 - 4.1이 할 일: `@Validated` + `maxRows`에 `@field:Positive`, `queryTimeout`에 `@field:DurationMin(millis = 1)`, `toConfig()`, `application.yml`에 design 2장 블록(`url: jdbc:mysql://localhost:${MYSQL_PORT:3306}/olist`, `password: ${ASKFLOW_READER_PASSWORD:}`). 1.7에서 이렇게 임시로 구현해 잘못된 상한 값 4개와 컨트롤러 6개가 통과하는 것을 확인하고 되돌렸다. `TargetDbPropertiesTest`의 나머지 3개와 앱 전체 테스트는 `MySqlConnector.createPool`(3.1)이 있어야 통과한다.
 - 커밋된 `ApiApplicationTests`는 Ralph 훅이 고치지 못하게 막는다. 연결 실패 시작 시나리오는 새 `ApiApplicationConnectionFailureTests`에 뒀다. `ApiApplicationTests.contextLoads`는 4.1까지 실패한다.
+- web 모듈 규칙은 `web/CLAUDE.md`에 있다. `ConnectionStatus.test.tsx`가 정한 것(5.1에서 맞춘다): 컴포넌트는 기본 내보내기 `ConnectionStatus`(props 없음)이고 스스로 `fetch('/api/connection/status', <옵션>)`를 부른다(두 번째 인자가 있어야 한다). 화면 글은 `textContent` 정규식으로 본다: "연결됨", "테이블 9개", "용어 0개", "쓰기 권한"(권한이 없으면 이 글이 없어야 한다), "연결 실패", 원인 `message`, `checkKeys`, 실패 시 "연결 상태를 불러오지 못했"(네트워크 오류와 502 둘 다). 마지막 시나리오는 `<App />`을 그려 보므로 `App`에 컴포넌트를 넣어야 통과한다.
 - 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. `createPool`은 `readOnly`·`autoCommit = false`·`connectionInitSql`을 모두 걸어야 한다.
 
 ---
@@ -76,4 +77,12 @@
 - `./gradlew :api:test`는 18개 모두 실패(`NotImplementedError`, 설정 없음)한다. `ktlintCheck`와 모든 컴파일은 통과한다.
 - 바꾼 파일: `api/src/main/kotlin/io/askflow/api/connection/*`(새 골격), `api/src/test/kotlin/io/askflow/api/connection/TargetDbPropertiesTest.kt`, `.../ConnectionStatusControllerTest.kt`, `api/src/test/kotlin/io/askflow/api/ApiApplicationConnectionFailureTests.kt`, `api/CLAUDE.md`(새 파일)
 - 다음 반복(1.8): web 테스트. 응답 형식은 `ConnectionStatusResponse`와 같게 `web/src/connection/types.ts`에 쓴다(`failure.reason`은 enum 이름).
+---
+
+## 2026-10-28 - 1.8 홈 연결 상태 시나리오를 테스트로 옮김
+- `ConnectionStatus.test.tsx`(6개): 연결됨(테이블 9개, 용어 0개, 요청 주소), 쓰기 권한 경고(INSERT, UPDATE)와 권한 없으면 경고 없음, 연결 실패(원인 메시지, 확인할 설정 키), 상태 API에 닿지 않음(네트워크 오류, 502 응답, `<App />`의 제목은 그대로).
+- 응답 타입은 design 8장 형식으로 `types.ts`에 뒀다(`failure`는 선택·null 허용). 컴포넌트 골격은 `null`을 돌려준다.
+- `typecheck`, `lint`는 통과하고 `test`는 새 6개만 단언 실패(`App.test.tsx` 통과)하는 것을 확인했다.
+- 바꾼 파일: `web/src/connection/types.ts`, `.../ConnectionStatus.tsx`(새 골격), `.../ConnectionStatus.test.tsx`, `web/CLAUDE.md`(새 파일)
+- 다음 반복(2.1): 1장이 끝났다. 2.1부터 구현이다. 잠금·파일 쓰기 SELECT의 원문 검사("알아 둘 패턴")를 잊지 않는다.
 ---
