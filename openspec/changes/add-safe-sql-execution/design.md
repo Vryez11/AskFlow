@@ -123,7 +123,7 @@ askflow:
 | 홈 연결 상태 네 가지 | `web/src/connection/*.test.tsx` | Vitest + Testing Library, `fetch` 가짜 | `npm --prefix web run test` |
 
 - 테스트 이름에 `F-003`과 시나리오 이름을 넣는다(하네스 2-3).
-- 시간 상한 테스트는 SLEEP이 막히므로, 큰 테스트 테이블의 교차 조인(`SELECT COUNT(*) FROM numbers a, numbers b, numbers c`)으로 느린 쿼리를 만든다.
+- 시간 상한 테스트는 SLEEP이 막히므로, 큰 테스트 테이블의 교차 조인으로 느린 쿼리를 만든다. MySQL 8.4는 조건 없는 교차 조인의 `COUNT(*)`를 행 수 곱으로 바로 계산하므로, 행을 실제로 훑는 `SELECT SUM(a.n + b.n + c.n) FROM numbers a, numbers b, numbers c`를 쓴다.
 - **평가 세트 정답률:** 평가 세트는 아직 없어(F-002) 이번에 잴 것이 없다. 다만 검사가 보수적이라 F-002에서 맞는 SQL을 거부할 수 있다(예: JSqlParser가 모르는 MySQL 구문). F-002 평가에서 "검사 거부"를 실패 이유로 따로 세어 확인한다.
 
 ## Risks / Trade-offs

@@ -23,7 +23,7 @@
 - `MySqlConnector`는 `config.allowedTables`로 `SqlGuard`를 만들고 `execute`의 검사 통과 뒤는 `TODO()`다(3.1). 빈 허용 목록 처리는 3.5.
 - 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. 그래서 풀의 JDBC `readOnly`는 끄고(켜면 드라이버가 먼저 거부해 오류 코드 0) 세션 변수로 읽기 전용을 건다(3.1, design 4장을 이에 맞춰 고쳤다).
 - `MySqlConnector.execute`(3.1): 검사 → `run`(연결 빌림, 끝나면 rollback) → `query`. SQL 예외는 아직 그대로 던진다. 3.2가 `run`에서 잡아 분류한다. 결과 열의 `pii`는 아직 `false`(3.3).
-- **3.2 주의:** `MySqlConnectorIT`의 시간 상한 시나리오 쿼리(`SELECT COUNT(*) FROM numbers a, numbers b, numbers c`)는 MySQL 8.4에서 4ms 만에 `125000000000`을 돌려준다(교차 조인 `COUNT(*)`를 행 수 곱으로 계산). 구현과 상관없이 `Success`가 되어 이 테스트는 통과할 수 없다. 이미 있는 시나리오 테스트를 고쳐야 하니 3.2에서 사람에게 넘겨야 할 가능성이 크다(예: `SUM(a.n + b.n + c.n)`처럼 행을 실제로 훑는 쿼리로 바꾸기).
+- **3.2 해결:** 시간 상한 시나리오 쿼리는 행을 실제로 훑는 `SELECT SUM(a.n + b.n + c.n) FROM numbers a, numbers b, numbers c`로 바꿨다(사람이 승인). MySQL 8.4는 조건 없는 교차 조인의 `COUNT(*)`를 행 수 곱으로 바로 계산하니, 느린 쿼리가 필요하면 `COUNT(*)`를 쓰지 않는다.
 
 ---
 
@@ -151,4 +151,9 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`
 ---
 
-<promise>BLOCKED</promise>
+## 2026-10-28 - 3.2 실행 오류 분류 (사람이 막힘 해결)
+- 사람이 승인해 `MySqlConnectorIT.kt:89`의 시간 상한 쿼리를 `SELECT SUM(a.n + b.n + c.n) FROM numbers a, numbers b, numbers c`로 바꾸고, design.md 9장 문장도 고쳤다.
+- 확인: `./gradlew :pipeline:integrationTest --tests '*MySqlConnectorIT*'`에서 시간 상한(1.02초 만에 `TIMEOUT`), 없는 컬럼, DB 꺼짐 시나리오가 통과한다. 남은 실패 3개(`SELECT 별표` 두 개, 화면용 결과)는 3.3 몫이다. tasks.md 3.2를 체크했다.
+- 바꾼 파일: `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnectorIT.kt`, `openspec/changes/add-safe-sql-execution/design.md`, `openspec/changes/add-safe-sql-execution/tasks.md`
+- 다음 반복(3.3): `PiiLineage`의 `STAR` 항목을 JDBC 메타데이터로 판정한다. "알아 둘 패턴"의 별표 항목 수 맞추기 규칙을 먼저 본다.
+---
