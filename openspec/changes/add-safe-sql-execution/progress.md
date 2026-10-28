@@ -328,3 +328,11 @@
 - 막음 3건(원칙 안에서 고침 → 작업 6.7): LATERAL 안의 이름을 앞쪽 형제 출처 없이 찾아 엉뚱한 출처로 확인함, 대소문자만 다른 CTE 이름을 서버 설정에 따라 다르게 봄, 실행 경로가 컬럼 목록을 넘기는지 지키는 테스트가 없음(넘기지 않게 바꿔도 모든 테스트 통과).
 - 제안 3건: 테이블 이름 대소문자 비교(6.7의 같은 규칙으로 묶음), 검사기 거부의 CTE·서브쿼리 테스트(6.7에 넣음), design의 악센트 근거 문장이 관찰과 다름(design을 고침).
 ---
+
+## 2026-10-28 16:20 - 6.7 5차 검토 막음 3건 (출처 이름, 컬럼 목록 전달)
+- `PiiLineage.sourcesOf`: LATERAL 파생 테이블(`LateralSubSelect`)은 `Source.Unknown`(모든 열 가림). 테이블 이름이 실행 때 읽은 목록과 대소문자까지 같지 않거나(`PiiSchemaObjects.isExactTable`, 목록이 null인 단위 테스트 모드는 건너뜀), 스키마 없는 이름이 CTE 이름과 대소문자만 다르게 맞으면 `Unknown`. 검사기의 CTE 판정은 바꾸지 않았다.
+- 새 테스트: `PiiLineageSourceNameTest`(3, 구현 전 3개 모두 실패 확인), `SqlGuardNestedSessionTest`(3, CTE 본문·서브쿼리 안의 사용자 변수·LAST_INSERT_ID·대소문자만 다른 스키마. `ReferenceCollector`가 트리 전체를 훑어 이미 통과), `mysql/ExecutionColumnListTest`(1, 가짜 JDBC. 이미 통과하던 경로라 `readSchemaObjects`가 `columns`를 빼도록 임시로 바꿔 실패하는 것을 확인하고 되돌렸다).
+- 확인: `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest`, `./gradlew ktlintCheck build`, `openspec validate --all --strict` 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`, `.../guard/PiiSchemaObjects.kt`, 위 테스트 파일들, `pipeline/CLAUDE.md`, `tasks.md`
+- 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다. 재검토 때 볼 만한 것: `t.*`의 `findSource`는 대소문자를 무시해 첫 출처를 고른다(별표는 메타데이터로 판정하니 막음은 아닐 것).
+---
