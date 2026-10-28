@@ -4,7 +4,7 @@
 
 ## 1. 시나리오를 실패하는 테스트로 옮기기
 
-- [ ] 1.1 테스트가 컴파일될 골격을 만든다: pipeline에 JSqlParser, MySQL Connector/J, HikariCP, Testcontainers(MySQL) 의존성과 `integrationTest` 소스 세트(`check`에 묶음)를 추가하고, design 1·2장의 공개 타입(`DataSourceConnector`, `TargetDbConfig`, `ExecutionOutcome`, `QueryResult`, `LlmSafeResult`, `ExecutionError`와 오류 종류, `ConnectionStatus`, `SqlGuard`)을 본문 `TODO()`로 둔다. 확인: `./gradlew ktlintCheck compileKotlin compileTestKotlin compileIntegrationTestKotlin`, `./gradlew :pipeline:test`가 빠르게 끝난다
+- [x] 1.1 테스트가 컴파일될 골격을 만든다: pipeline에 JSqlParser, MySQL Connector/J, HikariCP, Testcontainers(MySQL) 의존성과 `integrationTest` 소스 세트(`check`에 묶음)를 추가하고, design 1·2장의 공개 타입(`DataSourceConnector`, `TargetDbConfig`, `ExecutionOutcome`, `QueryResult`, `LlmSafeResult`, `ExecutionError`와 오류 종류, `ConnectionStatus`, `SqlGuard`)을 본문 `TODO()`로 둔다. 확인: `./gradlew ktlintCheck compileKotlin compileTestKotlin compileIntegrationTestKotlin`, `./gradlew :pipeline:test`가 빠르게 끝난다
 - [ ] 1.2 `safe-sql-execution`의 검사 시나리오(SELECT 하나만, 실행 주석·힌트, 허용 테이블, 부작용 함수, 검사에 걸린 SQL은 DB에 닿지 않음)를 `pipeline/src/test`의 `SqlGuardTest`로 옮긴다. DB에 닿지 않음은 기록용 가짜 JDBC로 확인한다. 확인: `./gradlew :pipeline:test --tests '*SqlGuardTest*'`가 컴파일되고 실패한다
 - [ ] 1.3 행 수 상한의 LIMIT 다시 쓰기(없음, 작은 LIMIT, 큰 LIMIT, 설정 50)와 개인정보 열 해석 트리 시나리오(그대로, 별칭·함수, COUNT 안, 값을 돌려주는 집계, 서브쿼리를 거친 열)를 `LimitRewriteTest`, `PiiLineageTest`로 옮긴다. 확인: `./gradlew :pipeline:test --tests '*LimitRewriteTest*' --tests '*PiiLineageTest*'`가 실패한다
 - [ ] 1.4 `SHOW GRANTS` 줄 해석(읽기 전용, INSERT, ALL PRIVILEGES `*.*`, 역할 줄)과 연결 실패 원인 분류(1045, 통신 오류, 1049/1044)를 `GrantParserTest`, `ConnectionFailureClassifierTest`로 옮긴다. 확인: `./gradlew :pipeline:test --tests '*GrantParserTest*' --tests '*ConnectionFailureClassifierTest*'`가 실패한다
