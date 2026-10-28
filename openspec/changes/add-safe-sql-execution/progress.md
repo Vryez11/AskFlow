@@ -7,7 +7,7 @@
 - 개인정보 열 추적은 `PiiLineage(piiColumns).trace(sql): List<ItemPii>`(guard 패키지). 최상위 SELECT 항목마다 `PII`/`SAFE`/`STAR`. `STAR`(`*`, `t.*`)는 3.3에서 JDBC 메타데이터로 판정한다. 결과 열과 항목 수가 `STAR` 때문에 다를 수 있으니 3.3에서 맞춰야 한다. 2.4 구현: `STAR`는 기본 테이블만 펼친 `*`에만 나온다. 서브쿼리·CTE를 펼친 `*`, `*`가 섞인 UNION, VALUES 같은 문은 `PII` 한 항목이 되어 항목 수가 결과 열 수와 다를 수 있다. 3.3은 맞출 수 없으면(별표가 둘 이상이거나 별표 없이 수가 다름) 모든 열을 가린다(`PiiLineage` KDoc). `QueryResult.forLlm()`은 구현됐다.
 - 1장 동안 Stop 훅은 `:pipeline:test` 실패(모두 `NotImplementedError`)로 매번 막는다. 1장의 확인 조건이 실패라 정상이고, 구현을 당겨 하지 않는다. 2~5장에서도 뒤 작업의 테스트(pipeline 단위, web `ConnectionStatus.test.tsx`)가 남아 있는 동안은 같다. 실패가 모두 뒤 작업 몫인지만 확인한다. 3/3이면 훅이 사람에게 넘긴다. 실패가 `NotImplementedError` 말고도 있는지만 확인한다.
 - UNION 끝 LIMIT의 JSqlParser 함정은 `pipeline/CLAUDE.md`에 있다. LIMIT 다시 쓰기는 `SqlGuard.capLimit()`가 이를 처리한다.
-- `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 본문은 `TODO()`다. 풀 생성은 companion의 `createPool`.
+- `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 풀 생성은 companion의 `createPool`. `checkConnection()`은 아직 `TODO()`(3.5).
 - `SqlGuardTest`는 잠금·파일 쓰기 SELECT(`LOCK IN SHARE MODE`, `INTO OUTFILE`/`DUMPFILE`/`@변수`)를 `NOT_SELECT`로 기대하지만 JSqlParser 5.3은 이것들을 해석하지 못한다. 2.1에서 해석 전 원문 검사(문자열 리터럴 밖 토큰)로 `NOT_SELECT`를 돌려줘야 한다. `FOR UPDATE`/`FOR SHARE`는 해석된다.
 - `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다.
 - 권한 해석은 `GrantParser(schema).parse(lines): GrantCheck(writePrivileges, warnings)`, 연결 실패 분류는 `ConnectionFailureClassifier(password).classify(error): ConnectionFailure`. 둘 다 `mysql` 패키지의 internal이다. 분류기는 HikariCP가 감싼 예외(`SQLTransientConnectionException`)의 원인 사슬을 따라가야 하고, 원인 없는 풀 대기 시간 초과는 접속 불가로 본다.
@@ -21,7 +21,9 @@
 - web 모듈 규칙은 `web/CLAUDE.md`에 있다. `ConnectionStatus.test.tsx`가 정한 것(5.1에서 맞춘다): 컴포넌트는 기본 내보내기 `ConnectionStatus`(props 없음)이고 스스로 `fetch('/api/connection/status', <옵션>)`를 부른다(두 번째 인자가 있어야 한다). 화면 글은 `textContent` 정규식으로 본다: "연결됨", "테이블 9개", "용어 0개", "쓰기 권한"(권한이 없으면 이 글이 없어야 한다), "연결 실패", 원인 `message`, `checkKeys`, 실패 시 "연결 상태를 불러오지 못했"(네트워크 오류와 502 둘 다). 마지막 시나리오는 `<App />`을 그려 보므로 `App`에 컴포넌트를 넣어야 통과한다.
 - 테이블·함수 검사는 `guard/ReferenceCollector.collect(statement)`(리플렉션으로 트리 전체를 훑음)가 모은 것을 `SqlGuard`가 비교한다. 개인정보 추적(2.4)처럼 트리를 훑는 일에서 JSqlParser visitor만 믿으면 노드를 놓친다(`pipeline/CLAUDE.md`).
 - `MySqlConnector`는 `config.allowedTables`로 `SqlGuard`를 만들고 `execute`의 검사 통과 뒤는 `TODO()`다(3.1). 빈 허용 목록 처리는 3.5.
-- 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. `createPool`은 `readOnly`·`autoCommit = false`·`connectionInitSql`을 모두 걸어야 한다.
+- 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. 그래서 풀의 JDBC `readOnly`는 끄고(켜면 드라이버가 먼저 거부해 오류 코드 0) 세션 변수로 읽기 전용을 건다(3.1, design 4장을 이에 맞춰 고쳤다).
+- `MySqlConnector.execute`(3.1): 검사 → `run`(연결 빌림, 끝나면 rollback) → `query`. SQL 예외는 아직 그대로 던진다. 3.2가 `run`에서 잡아 분류한다. 결과 열의 `pii`는 아직 `false`(3.3).
+- **3.2 주의:** `MySqlConnectorIT`의 시간 상한 시나리오 쿼리(`SELECT COUNT(*) FROM numbers a, numbers b, numbers c`)는 MySQL 8.4에서 4ms 만에 `125000000000`을 돌려준다(교차 조인 `COUNT(*)`를 행 수 곱으로 계산). 구현과 상관없이 `Success`가 되어 이 테스트는 통과할 수 없다. 이미 있는 시나리오 테스트를 고쳐야 하니 3.2에서 사람에게 넘겨야 할 가능성이 크다(예: `SUM(a.n + b.n + c.n)`처럼 행을 실제로 훑는 쿼리로 바꾸기).
 
 ---
 
@@ -128,4 +130,14 @@
 - `PiiLineageTest` 14개 통과. `:pipeline:test`의 남은 실패는 `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4)뿐이다. `ktlintCheck`, 모든 컴파일 통과.
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`, `.../guard/JsqlTree.kt`(새 파일), `.../guard/ReferenceCollector.kt`, `.../datasource/QueryResult.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/PiiLineageEdgeTest.kt`(새 파일), `pipeline/CLAUDE.md`
 - 다음 반복(3.1): HikariCP 풀과 `execute`. 결과 열의 `pii`는 3.3에서 `PiiLineage`와 메타데이터를 합쳐 정한다. 3.1에서는 아직 `false`로 둬도 3.1 확인 시나리오에는 영향이 없다.
+---
+
+## 2026-10-28 - 3.1 HikariCP 풀과 execute
+- `createPool`: HikariCP(`autoCommit = false`, 풀 크기 4, `connectionTimeout` 3초, `initializationFailTimeout = -1`), `connectionInitSql`은 `SET SESSION transaction_read_only = ON, SESSION max_execution_time = <ms>`. `SET SESSION TRANSACTION READ ONLY, ...`는 문법 오류라 연결이 하나도 안 만들어졌다.
+- 읽기 전용: 풀의 JDBC `readOnly`를 켜면 드라이버가 INSERT를 먼저 거부해(오류 코드 0) 읽기 전용 세션 시나리오가 1792를 못 본다. 풀은 `readOnly = false` + `readOnlyPropagatesToServer=false`로 두고 세션 변수로 건다. design 4장을 이에 맞춰 고쳤다. `execute`는 실행마다 JDBC `readOnly`를 켜(드라이버 쪽 검사만) 실행하고 rollback한다.
+- `execute`: `queryTimeout` = 상한 + 1초(올림), `maxRows` = 상한 + 1, 결과가 상한보다 많으면 행 없이 `ROW_LIMIT_EXCEEDED`(`cause` "상한 N행", `checkPoints` `askflow.target-db.max-rows`). 열 이름은 `getColumnLabel`.
+- 새 `ReadOnlySessionIT`: JDBC `readOnly`를 켰다 반납한 연결도 DB가 쓰기를 거부하는지. `readOnlyPropagatesToServer=true`로 바꾸면 DELETE가 통과해 실패하는 것을 확인했다.
+- `MySqlConnectorIT` 19개 중 13개 통과(3.1 확인 시나리오 모두). 남은 6개: 시간 상한·없는 컬럼·DB 꺼짐(3.2), `SELECT *` 두 개·화면용 결과(3.3). `:pipeline:test` 남은 실패는 `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4), `ConnectionCheckIT` 11(3.5). `ktlintCheck`, 모든 컴파일 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/ReadOnlySessionIT.kt`(새 파일), `openspec/changes/add-safe-sql-execution/design.md`, `pipeline/CLAUDE.md`
+- 다음 반복(3.2): "알아 둘 패턴"의 **3.2 주의**(시간 상한 테스트 쿼리가 MySQL 8.4에서 바로 끝남)를 먼저 본다. 예외 분류는 `run`에서 한다. HikariCP 연결 대기 시간 초과(`SQLTransientConnectionException`)는 원인 사슬을 봐야 한다(DB 꺼짐 시나리오).
 ---
