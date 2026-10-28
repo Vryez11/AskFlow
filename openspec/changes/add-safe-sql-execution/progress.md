@@ -24,6 +24,7 @@
 - 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. 그래서 풀의 JDBC `readOnly`는 끄고(켜면 드라이버가 먼저 거부해 오류 코드 0) 세션 변수로 읽기 전용을 건다(3.1, design 4장을 이에 맞춰 고쳤다).
 - `MySqlConnector.execute`(3.1): 검사 → `run`(연결 빌림, 끝나면 rollback) → `query`. SQL 예외는 아직 그대로 던진다. 3.2가 `run`에서 잡아 분류한다. 결과 열의 `pii`는 아직 `false`(3.3).
 - 결과 열의 `pii`(3.3): `MySqlConnector.markPii`가 실행한 SQL을 `PiiLineage`로 추적하고 `PiiColumnMarker`가 메타데이터와 합친다. 추적이 예외를 던지거나 항목을 열에 맞출 수 없으면 모두 가린다.
+- 6장처럼 "기존 테스트 파일에 테스트를 더한다"는 작업도 Ralph 훅이 커밋된 `src/test` 파일 수정을 막는다. 같은 패키지에 새 테스트 파일을 만들어 더한다(6.1은 `SqlGuardCommentTest`).
 - **3.2 해결:** 시간 상한 시나리오 쿼리는 행을 실제로 훑는 `SELECT SUM(a.n + b.n + c.n) FROM numbers a, numbers b, numbers c`로 바꿨다(사람이 승인). MySQL 8.4는 조건 없는 교차 조인의 `COUNT(*)`를 행 수 곱으로 바로 계산하니, 느린 쿼리가 필요하면 `COUNT(*)`를 쓰지 않는다.
 
 ---
@@ -247,4 +248,12 @@
 ## 2026-10-28 - 막음 3 방식 결정
 - 사람이 정했다: LLM에 보낼 실행 오류를 따로 두고 MySQL 메시지 원문은 뺀다. 값을 내보내는 함수를 거부 목록에 더하는 방식은 쓰지 않는다.
 - 스펙 `safe-sql-execution`에 "LLM에 보낼 실행 오류" 요구사항과 세 시나리오를 더했고, design 1·4·7장과 Risks를 고쳤다. 작업 6.3으로 넣었다.
+---
+
+## 2026-10-28 14:07 - 6.1 보통 주석 안 따옴표에 속는 힌트 검사를 고침
+- `RawSqlScanner.findExecutableComment`가 `codeOnly`와 같은 건너뛰기 규칙(`skipEnd`: 따옴표 리터럴·식별자, `/* */`, `#`, `-- `)을 쓰게 했다. 보통 주석 안 따옴표가 뒤의 힌트를 리터럴로 숨기지 못한다.
+- 두 번째 겹: `SqlGuard.check`가 LIMIT을 다시 쓴 뒤 그 문장을 같은 스캐너로 다시 보고, 힌트·실행 주석이 남아 있으면 `NOT_SELECT`로 거부한다.
+- 커밋된 `SqlGuardTest`는 Ralph 훅이 수정을 막아, 같은 패키지의 새 `SqlGuardCommentTest`(3개)에 더했다. 구현 전 2개 실패(힌트, 실행 주석), 구현 뒤 `./gradlew ktlintCheck :pipeline:test` 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/RawSqlScanner.kt`, `.../guard/SqlGuard.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/SqlGuardCommentTest.kt`, `pipeline/CLAUDE.md`, `tasks.md`
+- 다음 반복: 6.2(개인정보 열 추적의 같은 별칭). 테스트는 `PiiLineageTest`·`MySqlConnectorIT`가 아니라 새 파일에 더해야 한다.
 ---

@@ -13,7 +13,7 @@ import net.sf.jsqlparser.statement.select.SetOperationList
 
 /**
  * 실행 전 SQL 검사 (design 3장). 검사를 못 하면 막는다(fail-closed).
- * 순서: 실행 주석·힌트 → 해석 → 문 개수와 종류 → 테이블 → 함수 → LIMIT 다시 쓰기.
+ * 순서: 실행 주석·힌트 → 해석 → 문 개수와 종류 → 테이블 → 함수 → LIMIT 다시 쓰기 → 다시 쓴 문장의 힌트.
  */
 class SqlGuard(
     private val schema: String,
@@ -66,7 +66,12 @@ class SqlGuard(
         }
 
         capLimit(statement)
-        return GuardResult.Passed(statement.toString())
+        val rewritten = statement.toString()
+        // 두 번째 겹: 원문 검사와 JSqlParser가 주석을 다르게 읽어도, 다시 쓴 문장에 남은 힌트는 DB에 닿으니 다시 본다
+        RawSqlScanner.findExecutableComment(rewritten)?.let {
+            return reject(ExecutionErrorKind.NOT_SELECT, "MySQL이 실행하는 주석이나 힌트가 있습니다.", it)
+        }
+        return GuardResult.Passed(rewritten)
     }
 
     /**
