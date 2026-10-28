@@ -6,7 +6,7 @@
 - `SqlGuard(schema, allowedTables, maxRows).check(sql)`은 `GuardResult.Passed(sql = 다시 쓴 SQL)` 또는 `Rejected(error)`를 돌려준다.
 - 개인정보 열 추적은 `PiiLineage(piiColumns).trace(sql): List<ItemPii>`(guard 패키지). 최상위 SELECT 항목마다 `PII`/`SAFE`/`STAR`. `STAR`(`*`, `t.*`)는 3.3에서 JDBC 메타데이터로 판정한다. 결과 열과 항목 수가 `STAR` 때문에 다를 수 있으니 3.3에서 맞춰야 한다.
 - 1장 동안 Stop 훅은 `:pipeline:test` 실패(모두 `NotImplementedError`)로 매번 막는다. 1장의 확인 조건이 실패라 정상이고, 구현을 당겨 하지 않는다. 2~5장에서도 뒤 작업의 테스트(pipeline 단위, web `ConnectionStatus.test.tsx`)가 남아 있는 동안은 같다. 실패가 모두 뒤 작업 몫인지만 확인한다. 3/3이면 훅이 사람에게 넘긴다. 실패가 `NotImplementedError` 말고도 있는지만 확인한다.
-- UNION 끝 LIMIT의 JSqlParser 함정은 `pipeline/CLAUDE.md`에 있다. 2.3 LIMIT 다시 쓰기에서 꼭 본다.
+- UNION 끝 LIMIT의 JSqlParser 함정은 `pipeline/CLAUDE.md`에 있다. LIMIT 다시 쓰기는 `SqlGuard.capLimit()`가 이를 처리한다.
 - `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 본문은 `TODO()`다. 풀 생성은 companion의 `createPool`.
 - `SqlGuardTest`는 잠금·파일 쓰기 SELECT(`LOCK IN SHARE MODE`, `INTO OUTFILE`/`DUMPFILE`/`@변수`)를 `NOT_SELECT`로 기대하지만 JSqlParser 5.3은 이것들을 해석하지 못한다. 2.1에서 해석 전 원문 검사(문자열 리터럴 밖 토큰)로 `NOT_SELECT`를 돌려줘야 한다. `FOR UPDATE`/`FOR SHARE`는 해석된다.
 - `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다.
@@ -107,4 +107,14 @@
 - `SqlGuardTest` 22개 모두 통과. `:pipeline:test`의 남은 실패는 `LimitRewriteTest` 6(2.3), `PiiLineageTest` 14(2.4), `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4)뿐이다. `ktlintCheck`, 모든 컴파일 통과.
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/ReferenceCollector.kt`(새 파일), `.../guard/SqlGuard.kt`, `.../mysql/MySqlConnector.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/SqlGuardBypassTest.kt`(새 파일), `pipeline/CLAUDE.md`
 - 다음 반복(2.3): `SqlGuard.check()` 끝의 `GuardResult.Passed(statement.toString())` 앞에 LIMIT 다시 쓰기를 넣는다. UNION 끝 LIMIT 함정(`pipeline/CLAUDE.md`)을 본다.
+---
+
+## 2026-10-28 - 2.3 LIMIT 다시 쓰기와 다시 쓴 SQL
+- `SqlGuard.capLimit()`: 최상위 LIMIT이 없거나 숫자 리터럴이 아니거나(`?`, `ALL`) `maxRows + 1`보다 크면 `maxRows + 1`로 바꾼다. OFFSET은 그대로 둔다. 큰 수는 `bigIntegerValue`로 비교한다.
+- LIMIT을 둘 곳: 괄호 없는 UNION에서 `SetOperationList.limit`이 비고 마지막 `PlainSelect`에 LIMIT이 있으면 그것을 고친다(LIMIT 두 번 방지). 그 밖에는 최상위 `Select`(PlainSelect, SetOperationList, ParenthesedSelect)에 둔다.
+- 다시 쓴 SQL은 그대로 `statement.toString()`이라 보통 주석은 빠진다(`SqlGuardTest` 보통 주석 통과).
+- 새 `LimitRewriteEdgeTest`(4개): UNION 끝 LIMIT 한 번만, 괄호 친 UNION, 아주 큰 LIMIT, 괄호로 감싼 최상위 SELECT.
+- `LimitRewriteTest` 7개, `SqlGuardTest` 전체 통과. `:pipeline:test`의 남은 실패는 `PiiLineageTest` 14(2.4), `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4)뿐이다.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/SqlGuard.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/LimitRewriteEdgeTest.kt`(새 파일)
+- 다음 반복(2.4): `PiiLineage(piiColumns).trace(sql)`를 구현한다. 트리를 훑을 때 visitor만 믿지 말고 `ReferenceCollector`처럼 빠짐없이 따라간다. LIMIT 다시 쓰기는 최상위 SELECT 항목을 바꾸지 않으니 개인정보 추적은 원문·다시 쓴 SQL 어느 쪽으로 해도 항목이 같다.
 ---
