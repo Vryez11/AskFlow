@@ -13,6 +13,9 @@ import io.askflow.pipeline.datasource.TargetDbConfig
 import io.askflow.pipeline.datasource.guard.GuardResult
 import io.askflow.pipeline.datasource.guard.SqlGuard
 import java.sql.Connection
+import java.sql.SQLException
+import java.sql.SQLTimeoutException
+import java.sql.SQLTransientConnectionException
 import java.time.Duration
 import javax.sql.DataSource
 
@@ -37,15 +40,54 @@ class MySqlConnector internal constructor(
 
     override fun checkConnection(): ConnectionStatus = TODO()
 
-    // 실행 오류 분류는 3.2
     private fun run(sql: String): ExecutionOutcome =
-        dataSource.connection.use { connection ->
-            try {
-                query(connection, sql)
-            } finally {
-                connection.rollback()
+        try {
+            dataSource.connection.use { connection ->
+                try {
+                    query(connection, sql)
+                } finally {
+                    connection.rollback()
+                }
             }
+        } catch (e: SQLException) {
+            ExecutionOutcome.Failure(classify(e))
         }
+
+    /** 3024·[SQLTimeoutException] → 시간 상한, 통신 오류(`08*`) → 연결 실패, 그 밖 → DB 오류 (design 4장) */
+    private fun classify(error: SQLException): ExecutionError {
+        val chain = generateSequence<Throwable>(error) { it.cause }.filterIsInstance<SQLException>().toList()
+        return when {
+            chain.any { it is SQLTimeoutException || it.errorCode == MAX_EXECUTION_TIME_EXCEEDED } -> timeout()
+            chain.any { it is SQLTransientConnectionException || it.sqlState?.startsWith("08") == true } -> connectionFailed()
+            else -> dbError(chain.last())
+        }
+    }
+
+    private fun timeout(): ExecutionError =
+        ExecutionError(
+            kind = ExecutionErrorKind.TIMEOUT,
+            message = "실행 시간 상한을 넘어 중단했습니다. 조건을 좁히거나 집계 범위를 줄여 주세요.",
+            cause = "상한 ${formatSeconds(config.queryTimeout)}",
+            checkPoints = listOf("askflow.target-db.query-timeout"),
+        )
+
+    private fun connectionFailed(): ExecutionError =
+        ExecutionError(
+            kind = ExecutionErrorKind.CONNECTION_FAILED,
+            message = "분석 대상 DB에 연결하지 못했습니다.",
+            cause = "DB 연결 실패",
+            checkPoints = listOf("홈의 연결 상태", "askflow.target-db.url"),
+        )
+
+    private fun dbError(error: SQLException): ExecutionError =
+        ExecutionError(
+            kind = ExecutionErrorKind.DB_ERROR,
+            message = "DB가 SQL을 실행하지 못했습니다.",
+            cause = withoutSecret(error.message ?: "오류 코드 ${error.errorCode}"),
+            checkPoints = listOf("실행하려던 SQL"),
+        )
+
+    private fun withoutSecret(text: String): String = if (config.password.isEmpty()) text else text.replace(config.password, "****")
 
     private fun query(
         connection: Connection,
@@ -88,6 +130,9 @@ class MySqlConnector internal constructor(
         private const val POOL_SIZE = 4
         private val CONNECTION_TIMEOUT: Duration = Duration.ofSeconds(3)
 
+        /** MySQL ER_QUERY_TIMEOUT: max_execution_time 초과 */
+        private const val MAX_EXECUTION_TIME_EXCEEDED = 3024
+
         // 통합 테스트가 커넥터와 같은 세션 설정으로 검사 없이 문장을 보내 볼 때도 쓴다
         fun createPool(config: TargetDbConfig): DataSource =
             HikariDataSource(
@@ -110,6 +155,12 @@ class MySqlConnector internal constructor(
                         "SET SESSION transaction_read_only = ON, SESSION max_execution_time = ${config.queryTimeout.toMillis()}"
                 },
             )
+
+        /** 오류 원인에 쓰는 상한 표기. 1초, 1.5초 */
+        private fun formatSeconds(timeout: Duration): String {
+            val millis = timeout.toMillis()
+            return if (millis % 1000 == 0L) "${millis / 1000}초" else "${millis / 1000.0}초"
+        }
 
         /** 앱 쪽 상한은 DB 쪽 상한 + 1초, 초 단위로 올림 */
         private fun appTimeoutSeconds(timeout: Duration): Int {
