@@ -198,3 +198,10 @@
 - 바꾼 파일: `api/src/main/kotlin/io/askflow/api/connection/ConnectionStatusController.kt`, `.../connection/TermCountProvider.kt`, `tasks.md`
 - 다음 반복(4.3): `.env`는 읽지 않는다. `.env.example`과 `README.md`만 고친다. 확인의 `bootRun` + `curl`은 로컬 MySQL(`docker compose up -d`)이 필요하다.
 ---
+
+## 2026-10-28 - 4.3 .env.example과 README의 분석 대상 DB 설정 (막힘)
+- `.env.example`의 `ASKFLOW_READER_PASSWORD`에 "분석 대상 DB 연결(F-003)에서 쓴다, 비면 앱은 뜨고 연결 실패"를 덧붙였다. `README.md`에 `askflow.target-db` 키 표, `bootRun`은 `.env`를 읽지 않으니 셸에 `ASKFLOW_READER_PASSWORD`를 넣으라는 안내, `SPRING_CONFIG_ADDITIONAL_LOCATION`으로 파일럿 설정을 덧붙이는 예시를 적었다. 커밋 0955976. tasks.md 4.3은 체크하지 않았다.
+- **막힌 이유:** 확인 방법(`docker compose up -d` → `bootRun` → `curl`)을 돌릴 수 없다. 레포에 `.env`가 없어 `docker compose`가 `MYSQL_ROOT_PASSWORD` 없음으로 멈추고, 에이전트는 `.env`를 만들거나 읽을 수 없다. 비밀번호를 명령 앞 환경 변수로 넘기는 방식(`env ... docker compose up`)은 퍼미션 하네스에서 승인이 필요해 막혔다.
+- 사람에게 부탁: `.env`를 만들고 `docker compose up -d`, `ASKFLOW_READER_PASSWORD`를 셸에 넣고 `./gradlew :api:bootRun`, `curl localhost:8080/api/connection/status`가 `CONNECTED`와 테이블 수를 돌려주는지 본다(olist가 비어 있으면 테이블 수 0). 되면 tasks.md 4.3을 체크한다. 5.2도 같은 로컬 환경이 필요하니 `.env`가 있어야 한다.
+- 바꾼 파일: `.env.example`, `README.md`
+---
