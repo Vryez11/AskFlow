@@ -212,3 +212,11 @@
 - 확인: `curl localhost:8080/api/connection/status` → `state` `CONNECTED`, `tableCount` 0(olist에 데이터를 아직 넣지 않음), `termCount` 0, `writePrivileges` 빈 목록, `failure` null. tasks.md 4.3을 체크했다. 확인 뒤 api는 내렸고 MySQL 컨테이너(`askflow-mysql-1`, 3308)는 켜 두었다.
 - 다음 반복(5.1): web. 5.2는 같은 MySQL과 값이 필요하다. 레포의 `.env`는 아직 비어 있으니, 사람이 `.env`에 값을 채우기 전에는 5.2에서 다시 막힐 수 있다.
 ---
+
+## 2026-10-28 - 5.1 상태 조회 함수, ConnectionStatus 컴포넌트, /api 프록시
+- `web/src/connection/api.ts`의 `fetchConnectionStatus(signal)`: `fetch('/api/connection/status', { headers, signal })`, 2xx 밖이면 예외. 컴포넌트는 불러오는 중·불러옴·오류 세 상태이고, 언마운트 때 `AbortController`로 끊어 끊긴 요청은 오류로 그리지 않는다. 실패면 `role="alert"`로 원인 `message`와 `checkKeys`, 연결됨이면 테이블·용어 수, 쓰기 권한이 있으면 경고와 권한 이름, `warnings` 목록.
+- `App`에 `<ConnectionStatus />`를 넣고, `vite.config.ts`에 `server.proxy['/api'] = 'http://localhost:8080'`을 뒀다.
+- 확인: `npm --prefix web run lint`, `typecheck`, `test`(7개) 통과.
+- 바꾼 파일: `web/src/connection/api.ts`(새 파일), `web/src/connection/ConnectionStatus.tsx`, `web/src/App.tsx`, `web/vite.config.ts`, `tasks.md`, `web/CLAUDE.md`
+- 다음 반복(5.2): api(`MYSQL_PORT=3308`과 비밀번호를 셸에)와 `npm --prefix web run dev`를 함께 띄워 화면을 본다. 4.3 기록처럼 레포의 `.env`는 비어 있어 사람 도움이 필요할 수 있다. 비밀번호 틀림 상태는 `ASKFLOW_READER_PASSWORD`를 비우거나 틀린 값으로 `bootRun`하면 된다.
+---
