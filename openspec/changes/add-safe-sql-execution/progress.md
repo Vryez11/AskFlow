@@ -350,3 +350,9 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`, 위 테스트 파일들, `pipeline/CLAUDE.md`, `tasks.md`
 - 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
 ---
+
+## 2026-10-28 - 7.1 독립 검토 마무리, 7.2 완료 조건
+- 6.8(40e45c7)만 좁게 다시 검토: 막음 0건. 바깥 범위 CTE까지 규칙이 맞게 적용되고 회귀가 없음을 실행으로 확인. 제안 2건: design "출처 이름" 문장에 6.8의 예외를 적음(고침), 중첩 범위 테스트에 대소문자 변형이 없는 대조 쿼리를 더하면 좋음(남겨 둠).
+- 7.1 체크: 독립 검토를 여섯 차례 했고, 막는 지적은 작업 6.1~6.8로 고쳐 마지막 검토에서 0건.
+- 7.2 체크: `./gradlew ktlintCheck build --rerun-tasks`, web lint·typecheck·test, `openspec validate --all --strict` 모두 통과. 평가 세트는 아직 없어 해당 없음(PR 설명에 적는다). PRD F-003은 19fc8a3에서 고쳤다(오류 메시지 기준, 상한 기본값, 쓰기 권한 확인 방법). 그 뒤 바뀐 개인정보 판정 방식은 수용 기준("개인정보 컬럼의 값은 LLM에 보내지 않는다") 안의 구현 결정이라 PRD를 더 고치지 않았다.
+---

@@ -54,8 +54,8 @@
 
 ## 7. 검토와 change 완료 조건
 
-- [ ] 7.1 구현에 참여하지 않은 리뷰어(`/code-review` 또는 리뷰 서브에이전트)로 하네스 3-3 검토를 한다. 특히 3번(SELECT만 실행, 행 수·시간 상한, 개인정보 컬럼 가리기를 피해 가는 경로 없음)을 본다. 막는 지적은 이 파일에 작업으로 추가한다. 확인: 막는 지적 0건
-- [ ] 7.2 `conventions/harness.md` 4장의 change 완료 조건을 확인한다. 평가 세트는 아직 없어 해당 없음을 PR 설명에 적는다. 요구사항이 바뀌었으면 PRD F-003(특히 8장 "남은 것"의 상한 기본값과 쓰기 권한 확인 방법)을 고친다. 확인: `./gradlew ktlintCheck build`, `npm --prefix web run lint && npm --prefix web run typecheck && npm --prefix web run test`, `openspec validate --all --strict --no-interactive` 모두 통과
+- [x] 7.1 구현에 참여하지 않은 리뷰어(`/code-review` 또는 리뷰 서브에이전트)로 하네스 3-3 검토를 한다. 특히 3번(SELECT만 실행, 행 수·시간 상한, 개인정보 컬럼 가리기를 피해 가는 경로 없음)을 본다. 막는 지적은 이 파일에 작업으로 추가한다. 확인: 막는 지적 0건
+- [x] 7.2 `conventions/harness.md` 4장의 change 완료 조건을 확인한다. 평가 세트는 아직 없어 해당 없음을 PR 설명에 적는다. 요구사항이 바뀌었으면 PRD F-003(특히 8장 "남은 것"의 상한 기본값과 쓰기 권한 확인 방법)을 고친다. 확인: `./gradlew ktlintCheck build`, `npm --prefix web run lint && npm --prefix web run typecheck && npm --prefix web run test`, `openspec validate --all --strict --no-interactive` 모두 통과
 
 ## Workflow follow-up
 
