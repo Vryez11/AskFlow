@@ -10,6 +10,7 @@
 - `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 본문은 `TODO()`다. 풀 생성은 companion의 `createPool`.
 - `SqlGuardTest`는 잠금·파일 쓰기 SELECT(`LOCK IN SHARE MODE`, `INTO OUTFILE`/`DUMPFILE`/`@변수`)를 `NOT_SELECT`로 기대하지만 JSqlParser 5.3은 이것들을 해석하지 못한다. 2.1에서 해석 전 원문 검사(문자열 리터럴 밖 토큰)로 `NOT_SELECT`를 돌려줘야 한다. `FOR UPDATE`/`FOR SHARE`는 해석된다.
 - `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다.
+- 권한 해석은 `GrantParser(schema).parse(lines): GrantCheck(writePrivileges, warnings)`, 연결 실패 분류는 `ConnectionFailureClassifier(password).classify(error): ConnectionFailure`. 둘 다 `mysql` 패키지의 internal이다. 분류기는 HikariCP가 감싼 예외(`SQLTransientConnectionException`)의 원인 사슬을 따라가야 하고, 원인 없는 풀 대기 시간 초과는 접속 불가로 본다.
 - 버전: JSqlParser 5.3, HikariCP 7.0.2, Connector/J 9.7.0, Testcontainers 2.0.5(아티팩트 이름 `testcontainers-mysql`, `testcontainers-junit-jupiter`).
 
 ---
@@ -35,4 +36,12 @@
 - 21개 모두 `NotImplementedError`로 실패하는 것을 확인했다.
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`(새 골격), `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/LimitRewriteTest.kt`, `.../guard/PiiLineageTest.kt`, `pipeline/CLAUDE.md`
 - 다음 반복: JSqlParser가 괄호 없는 UNION 끝 LIMIT을 마지막 SELECT에 붙인다(`pipeline/CLAUDE.md`). 2.3에서 최상위 LIMIT을 고칠 때 이 위치를 써야 `LIMIT`이 두 번 찍히지 않는다.
+---
+
+## 2026-10-28 - 1.4 SHOW GRANTS 해석과 연결 실패 분류를 테스트로 옮김
+- `GrantParserTest`(11개): 읽기 전용, 스키마 INSERT, 테이블 권한, 컬럼 권한·대소문자·따옴표 없는 스키마, 중복 제거, 다른 스키마 무시, `ALL PRIVILEGES ON *.*`, MySQL 8이 펼친 정적·동적 권한 줄, 역할 줄 경고(역할 이름 포함), 해석 못 한 줄과 빈 결과 경고.
+- `ConnectionFailureClassifierTest`(7개): 1045 → 인증 실패(`askflow.target-db.username`, `ASKFLOW_READER_PASSWORD`), 통신 오류(`08*`)와 원인 없는 HikariCP 대기 시간 초과 → 접속 불가(`askflow.target-db.url`), 1049·1044 → 스키마(`askflow.target-db.schema`), 모르는 오류 → `UNKNOWN`과 DB 메시지, 메시지에서 비밀번호 빼기. HikariCP로 감싼 경우도 함께 본다.
+- 18개 모두 `NotImplementedError`로 실패하는 것을 확인했다. 다른 실패는 없다.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/GrantParser.kt`, `.../mysql/ConnectionFailureClassifier.kt`(새 골격), `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/mysql/GrantParserTest.kt`, `.../mysql/ConnectionFailureClassifierTest.kt`
+- 다음 반복: 3.4에서 `08004`(Too many connections)처럼 `08`로 시작하는 SQLState는 접속 불가가 된다. 모르는 오류 테스트는 그래서 `HY001`을 쓴다. 없는 허용 테이블(`TABLE_NOT_FOUND`)은 예외가 아니라 `checkConnection()`에서 만들므로 분류기에 없다.
 ---
