@@ -18,6 +18,12 @@ class PiiSchemaObjects(
     private val functions = functions.map { it.lowercase() }.toSet()
     private val columns = columns?.map { (table, column) -> table.lowercase() to column.lowercase() }?.toSet()
 
+    /** 쓴 그대로의 테이블·뷰 이름. 테이블 이름의 대소문자 구분은 서버 설정(`lower_case_table_names`)에 따라 다르다 */
+    private val tables = columns?.map { it.first }?.toSet()
+
+    /** 읽은 목록에 대소문자까지 같은 이름이 있는지. 대소문자만 다르게 맞는 이름은 어느 테이블로 갈지 확인하지 못한 것이다 */
+    fun isExactTable(table: String): Boolean = tables == null || table in tables
+
     fun isView(table: String): Boolean = table.lowercase() in views
 
     fun isGenerated(

@@ -13,6 +13,7 @@ import net.sf.jsqlparser.schema.Table
 import net.sf.jsqlparser.statement.select.AllColumns
 import net.sf.jsqlparser.statement.select.AllTableColumns
 import net.sf.jsqlparser.statement.select.FromItem
+import net.sf.jsqlparser.statement.select.LateralSubSelect
 import net.sf.jsqlparser.statement.select.ParenthesedFromItem
 import net.sf.jsqlparser.statement.select.ParenthesedSelect
 import net.sf.jsqlparser.statement.select.PlainSelect
@@ -182,8 +183,12 @@ class PiiLineage(
                 val name = unquote(item.name)
                 val sourceName = item.alias?.let { unquote(it.name) } ?: name
                 val cte = ctes[name]
+                val caseOnlyCte = ctes.keys.any { it != name && it.equals(name, ignoreCase = true) }
                 if (item.schemaName == null && cte != null) {
                     listOf(Source.Derived(sourceName, renamed(cte, aliasColumns(item.alias))))
+                } else if ((item.schemaName == null && caseOnlyCte) || !objects.isExactTable(name)) {
+                    // 대소문자만 다르게 맞으면 서버 설정에 따라 다른 테이블이나 CTE로 읽힐 수 있다 (design 7장 "출처 이름")
+                    listOf(Source.Unknown(sourceName))
                 } else {
                     listOf(
                         Source.BaseTable(sourceName, objects.isView(name)) { column ->
@@ -196,7 +201,8 @@ class PiiLineage(
                     )
                 }
             }
-            // LATERAL이 앞의 FROM을 참조해도 그 이름은 바깥 범위에서 못 찾아 가려진다
+            // LATERAL 안의 이름은 같은 FROM의 앞쪽 출처를 먼저 찾는다. 그 규칙을 따라가지 않고 모든 열을 가린다
+            is LateralSubSelect -> listOf(Source.Unknown(item.alias?.let { unquote(it.name) }.orEmpty()))
             is ParenthesedSelect ->
                 listOf(
                     Source.Derived(
