@@ -41,6 +41,7 @@ interface DataSourceConnector {
 }
 sealed interface ExecutionOutcome { data class Success(val result: QueryResult); data class Failure(val error: ExecutionError) }
 class QueryResult(columns, rows, rowCount, elapsed, executedSql) { fun forLlm(): LlmSafeResult }
+class ExecutionError(kind, message, cause, checkPoints, dbErrorCode, sqlState) { fun forLlm(): LlmSafeError }
 ```
 
 `execute` 말고 SQL 문자열을 받아 실행하는 공개 메서드는 두지 않는다. 연결 확인의 고정 조회(`SHOW GRANTS`, `information_schema` 조회)는 구현체 안의 private 코드다.
@@ -85,7 +86,7 @@ askflow:
 - 읽기 전용은 DB 세션에 건다. 풀의 JDBC `readOnly`는 끄고 Connector/J `readOnlyPropagatesToServer=false`를 둔다. JDBC `readOnly`를 풀에 켜면 드라이버가 쓰기를 먼저 거부해 세션 겹을 따로 확인할 수 없고, 반납 때 풀이 `readOnly`를 되돌리며 서버에 `READ WRITE`를 보낼 수 있다.
 - 실행마다 JDBC `readOnly`를 켜(드라이버 쪽 검사, 서버로는 보내지 않음) 세션의 읽기 전용 트랜잭션에서 실행하고 끝나면 rollback한다.
 - 앱 쪽 상한: `Statement.queryTimeout`을 상한 + 1초로, `maxRows`를 `maxRows + 1`로 건다. LIMIT 다시 쓰기가 빠져도 가져오는 행 수가 묶인다.
-- 오류 분류: MySQL 3024(`max_execution_time` 초과)와 `SQLTimeoutException`은 실행 시간 상한 초과, 행이 `maxRows`를 넘으면 행 수 상한 초과, 통신 오류(SQLState `08*`)는 연결 실패, 그 밖은 DB 오류(MySQL 메시지를 원인에 담는다).
+- 오류 분류: MySQL 3024(`max_execution_time` 초과)와 `SQLTimeoutException`은 실행 시간 상한 초과, 행이 `maxRows`를 넘으면 행 수 상한 초과, 통신 오류(SQLState `08*`)는 연결 실패, 그 밖은 DB 오류(MySQL 메시지를 원인에, 오류 코드와 SQLState를 따로 담는다). 원인의 MySQL 메시지는 화면용이고 LLM에는 보내지 않는다(7장).
 
 ### 5. 권한 확인은 `SHOW GRANTS FOR CURRENT_USER()`
 
@@ -106,6 +107,7 @@ askflow:
 - **JDBC 메타데이터:** Connector/J의 `getTableName`/`getColumnName`(원래 테이블·컬럼)이 개인정보 컬럼이면 개인정보 열이다. `SELECT *`는 이 쪽이 정확하다.
 - 두 방법 중 하나라도 개인정보라고 하면 가린다. `*`는 해석 트리에서 "알 수 없음"이 되므로, `*` 확장 열은 메타데이터로 판정하고 메타데이터도 비어 있으면 가린다.
 - `QueryResult.forLlm()`이 `LlmSafeResult`를 만드는 유일한 방법이다. F-002의 `LlmClient`는 `QueryResult`가 아니라 `LlmSafeResult`만 받게 한다.
+- **오류도 같다.** MySQL은 일부 함수(예: `GTID_SUBSET`)에서 인자 값을 오류 메시지에 그대로 넣는다. 그래서 DB 오류 원문은 개인정보 값을 담을 수 있다. `ExecutionError.forLlm()`이 `LlmSafeError`(생성자 internal)를 만드는 유일한 방법이다. DB 오류는 종류, 한국어 메시지, 오류 코드, SQLState만 남기고 MySQL 메시지 원문은 버린다. 값을 내보내는 함수를 거부 목록으로 하나씩 막는 방식은 빠지는 함수가 생기므로 쓰지 않는다. 검사·상한 오류의 원인(거부한 테이블·함수 이름, 상한 값)은 SQL과 설정에서 온 것이라 남긴다. F-002의 SQL 수정 루프는 `ExecutionError`가 아니라 `LlmSafeError`만 받는다.
 
 ### 8. API와 화면
 
@@ -130,6 +132,7 @@ askflow:
 
 - [JSqlParser가 일부 MySQL 구문을 모른다] → 해석 실패로 막히므로 안전 쪽이다. F-002 평가에서 거부 비율을 보고, 필요하면 생성 프롬프트에서 그 구문을 피하게 한다.
 - [다시 쓴 SQL이 원문과 뜻이 다를 수 있다] → 통합 테스트에서 대표 쿼리(CTE, UNION, 윈도 함수, 날짜 함수)를 원문과 다시 쓴 문장으로 각각 실행해 결과를 비교한다.
+- [LLM에 보낼 DB 오류에 원문이 없어 F-002의 SQL 고치기가 어려워진다] → 오류 코드로 원인 종류(없는 컬럼 1054, 없는 테이블 1146, 문법 1064 등)는 알 수 있다. 부족하면 F-002에서 식별자만 담는 오류 코드에 한해 메시지를 남기는 허용 목록을 스펙으로 정한다.
 - [개인정보 추적이 넉넉해 필요한 열까지 가린다] → 가리는 쪽이 안전하다. 서술 품질이 떨어지면 F-004에서 보고, 규칙은 스펙을 고쳐 바꾼다.
 - [권한 확인이 역할·프록시 권한을 다 보지 못한다] → 경고를 남겨 사람이 확인하게 한다. 첫 겹(계정)이 무너져도 세션과 검사가 막는다.
 - [연결 상태를 조회마다 확인해 DB에 부담] → 홈을 열 때만 부르고 쿼리가 가볍다. 문제가 되면 짧은 캐시를 둔다.
