@@ -141,3 +141,14 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/ReadOnlySessionIT.kt`(새 파일), `openspec/changes/add-safe-sql-execution/design.md`, `pipeline/CLAUDE.md`
 - 다음 반복(3.2): "알아 둘 패턴"의 **3.2 주의**(시간 상한 테스트 쿼리가 MySQL 8.4에서 바로 끝남)를 먼저 본다. 예외 분류는 `run`에서 한다. HikariCP 연결 대기 시간 초과(`SQLTransientConnectionException`)는 원인 사슬을 봐야 한다(DB 꺼짐 시나리오).
 ---
+
+## 2026-10-28 - 3.2 실행 오류 분류 (막힘)
+- `MySqlConnector.run`에서 `SQLException`을 잡아 분류했다: 원인 사슬에 `SQLTimeoutException`이나 3024 → `TIMEOUT`(`cause` "상한 1초", `askflow.target-db.query-timeout`), `SQLTransientConnectionException`이나 SQLState `08*` → `CONNECTION_FAILED`(`checkPoints` "홈의 연결 상태", `askflow.target-db.url`), 그 밖 → `DB_ERROR`(MySQL 메시지 원문, 비밀번호는 `****`로 바꿈). 커밋 37e6925. tasks.md 3.2는 체크하지 않았다.
+- `MySqlConnectorIT`의 없는 컬럼, DB 꺼짐 시나리오는 통과한다.
+- **막힌 이유:** 시간 상한 시나리오(`F-003 실행 시간 상한을 넘는 쿼리`)의 쿼리 `SELECT COUNT(*) FROM numbers a, numbers b, numbers c`가 MySQL 8.4에서 11ms 만에 `Success`로 끝나, 구현과 상관없이 통과할 수 없다. 이미 커밋된 시나리오 테스트를 고쳐야 하므로 사람에게 넘긴다.
+- 확인한 것: 임시 테스트로 같은 설정(상한 1초)에서 `SELECT SUM(a.n + b.n + c.n) FROM numbers a, numbers b, numbers c`를 실행하면 1080ms 만에 `TIMEOUT`, `cause` "상한 1초", `checkPoints` `askflow.target-db.query-timeout`이 돌아왔다. 임시 테스트는 지웠다.
+- 사람에게 제안: `MySqlConnectorIT.kt:89`의 쿼리를 위 `SUM(a.n + b.n + c.n)` 쿼리로 바꾸고, design.md 9장(테스트 전략)의 시간 상한 테스트 쿼리 문장도 같이 고친다. 바꾸면 3.2를 다시 확인해 체크하면 된다.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`
+---
+
+<promise>BLOCKED</promise>
