@@ -3,9 +3,13 @@ package io.askflow.pipeline.datasource.guard
 import io.askflow.pipeline.datasource.ExecutionError
 import io.askflow.pipeline.datasource.ExecutionErrorKind
 import net.sf.jsqlparser.JSQLParserException
+import net.sf.jsqlparser.expression.LongValue
 import net.sf.jsqlparser.parser.CCJSqlParserUtil
 import net.sf.jsqlparser.statement.Statement
+import net.sf.jsqlparser.statement.select.Limit
+import net.sf.jsqlparser.statement.select.PlainSelect
 import net.sf.jsqlparser.statement.select.Select
+import net.sf.jsqlparser.statement.select.SetOperationList
 
 /**
  * 실행 전 SQL 검사 (design 3장). 검사를 못 하면 막는다(fail-closed).
@@ -61,7 +65,31 @@ class SqlGuard(
             return reject(ExecutionErrorKind.FUNCTION_NOT_ALLOWED, "실행을 허용하지 않은 함수입니다.", it)
         }
 
+        capLimit(statement)
         return GuardResult.Passed(statement.toString())
+    }
+
+    /**
+     * 최상위 LIMIT이 없거나 `maxRows + 1`보다 크면 `maxRows + 1`로 바꾼다. OFFSET은 둔다.
+     * 숫자 리터럴이 아닌 LIMIT(`?`, `ALL` 등)도 바꾼다.
+     */
+    private fun capLimit(statement: Select) {
+        val target = topLimitHolder(statement)
+        val cap = maxRows.toLong() + 1
+        val limit = target.limit ?: Limit().also { target.limit = it }
+        val rowCount = limit.rowCount
+        if (rowCount !is LongValue || rowCount.bigIntegerValue > cap.toBigInteger()) {
+            limit.rowCount = LongValue(cap)
+        }
+    }
+
+    // 괄호 없는 UNION 끝의 LIMIT은 MySQL에서 전체에 걸리지만 JSqlParser는 마지막 SELECT에 붙인다(pipeline/CLAUDE.md)
+    private fun topLimitHolder(statement: Select): Select {
+        if (statement is SetOperationList && statement.limit == null) {
+            val last = statement.selects.last()
+            if (last is PlainSelect && last.limit != null) return last
+        }
+        return statement
     }
 
     private fun isAllowed(table: ReferenceCollector.TableRef): Boolean =
