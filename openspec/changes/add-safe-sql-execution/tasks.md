@@ -32,7 +32,7 @@
 
 - [x] 4.1 `askflow.target-db` 설정 바인딩·검증과 커넥터 빈 등록, `application.yml` 기본값을 넣는다. 확인: `TargetDbPropertiesTest`, `ApiApplicationTests` 통과
 - [x] 4.2 `TermCountProvider`(기본 0)와 `GET /api/connection/status`를 구현한다. 확인: `ConnectionStatusControllerTest` 통과, `./gradlew ktlintCheck build` 통과
-- [ ] 4.3 `.env.example`의 `ASKFLOW_READER_PASSWORD` 설명과 `README.md`의 분석 대상 DB 설정(파일럿 설정 덮어쓰기 포함)을 고친다. 확인: 로컬에서 `docker compose up -d` 뒤 `./gradlew :api:bootRun`을 띄우고 `curl localhost:8080/api/connection/status`가 연결됨과 테이블 수를 돌려준다
+- [x] 4.3 `.env.example`의 `ASKFLOW_READER_PASSWORD` 설명과 `README.md`의 분석 대상 DB 설정(파일럿 설정 덮어쓰기 포함)을 고친다. 확인: 로컬에서 `docker compose up -d` 뒤 `./gradlew :api:bootRun`을 띄우고 `curl localhost:8080/api/connection/status`가 연결됨과 테이블 수를 돌려준다
 
 ## 5. 홈 연결 상태 (web)
 

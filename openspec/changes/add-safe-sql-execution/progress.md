@@ -205,3 +205,10 @@
 - 사람에게 부탁: `.env`를 만들고 `docker compose up -d`, `ASKFLOW_READER_PASSWORD`를 셸에 넣고 `./gradlew :api:bootRun`, `curl localhost:8080/api/connection/status`가 `CONNECTED`와 테이블 수를 돌려주는지 본다(olist가 비어 있으면 테이블 수 0). 되면 tasks.md 4.3을 체크한다. 5.2도 같은 로컬 환경이 필요하니 `.env`가 있어야 한다.
 - 바꾼 파일: `.env.example`, `README.md`
 ---
+
+## 2026-10-28 - 4.3 로컬 확인 (사람 요청으로 대신 확인)
+- `.env`는 읽거나 고치지 않았다. 로컬 전용 값을 레포 밖 파일에 만들어 `docker compose --env-file <파일> up -d`로 MySQL을 띄우고, 같은 값을 셸에 올려 `./gradlew :api:bootRun`을 띄웠다.
+- 이 Mac은 3306(직접 설치한 mysqld)과 3307(다른 프로젝트 컨테이너)을 이미 쓰고 있어 `MYSQL_PORT=3308`로 띄웠다. `application.yml`의 url이 `${MYSQL_PORT:3306}`을 따르니 api도 같은 `MYSQL_PORT`를 셸에 넣어야 한다.
+- 확인: `curl localhost:8080/api/connection/status` → `state` `CONNECTED`, `tableCount` 0(olist에 데이터를 아직 넣지 않음), `termCount` 0, `writePrivileges` 빈 목록, `failure` null. tasks.md 4.3을 체크했다. 확인 뒤 api는 내렸고 MySQL 컨테이너(`askflow-mysql-1`, 3308)는 켜 두었다.
+- 다음 반복(5.1): web. 5.2는 같은 MySQL과 값이 필요하다. 레포의 `.env`는 아직 비어 있으니, 사람이 `.env`에 값을 채우기 전에는 5.2에서 다시 막힐 수 있다.
+---
