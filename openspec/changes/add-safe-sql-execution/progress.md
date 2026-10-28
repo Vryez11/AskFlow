@@ -12,6 +12,9 @@
 - `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다.
 - 권한 해석은 `GrantParser(schema).parse(lines): GrantCheck(writePrivileges, warnings)`, 연결 실패 분류는 `ConnectionFailureClassifier(password).classify(error): ConnectionFailure`. 둘 다 `mysql` 패키지의 internal이다. 분류기는 HikariCP가 감싼 예외(`SQLTransientConnectionException`)의 원인 사슬을 따라가야 하고, 원인 없는 풀 대기 시간 초과는 접속 불가로 본다.
 - 버전: JSqlParser 5.3, HikariCP 7.0.2, Connector/J 9.7.0, Testcontainers 2.0.5(아티팩트 이름 `testcontainers-mysql`, `testcontainers-junit-jupiter`).
+- 통합 테스트는 `TestMySql`(mysql:8.4, 스키마 `olist`, 테이블 orders 6행·customers 4행·numbers 1..5000, 계정 `askflow_reader`(SELECT, SHOW VIEW)·`askflow_writer`(SELECT, INSERT, UPDATE, DELETE))를 쓴다. 이 로컬 환경에서는 Docker가 돌아 `:pipeline:integrationTest`가 실제로 컨테이너를 띄운다.
+- `MySqlConnectorIT`가 정한 오류 형식(3장에서 맞춘다): 시간 상한 `cause`에 `"1초"`, `checkPoints`에 `askflow.target-db.query-timeout`. 행 수 상한 `cause`에 상한 숫자(`"1000"`, 쉼표 없음), `checkPoints`에 `askflow.target-db.max-rows`. 연결 실패 `checkPoints` 중 하나에 `"연결 상태"`. DB 오류 `cause`에 MySQL 메시지 원문.
+- 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. `createPool`은 `readOnly`·`autoCommit = false`·`connectionInitSql`을 모두 걸어야 한다.
 
 ---
 
@@ -44,4 +47,12 @@
 - 18개 모두 `NotImplementedError`로 실패하는 것을 확인했다. 다른 실패는 없다.
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/GrantParser.kt`, `.../mysql/ConnectionFailureClassifier.kt`(새 골격), `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/mysql/GrantParserTest.kt`, `.../mysql/ConnectionFailureClassifierTest.kt`
 - 다음 반복: 3.4에서 `08004`(Too many connections)처럼 `08`로 시작하는 SQLState는 접속 불가가 된다. 모르는 오류 테스트는 그래서 `HY001`을 쓴다. 없는 허용 테이블(`TABLE_NOT_FOUND`)은 예외가 아니라 `checkConnection()`에서 만들므로 분류기에 없다.
+---
+
+## 2026-10-28 - 1.5 MySQL이 필요한 시나리오를 MySqlConnectorIT로 옮김
+- `TestMySql`(공용 Testcontainers MySQL과 테스트용 스키마·계정)과 `MySqlConnectorIT`(19개)를 만들었다: 읽기 전용 세션(writer 계정의 INSERT가 1792로 거부, 데이터 그대로), 시간 상한(교차 조인, 1초 상한이 5초 안에 끝남), 시간 상한 안, 행 수 상한 안·초과·작은 LIMIT·큰 LIMIT·상한 50(80행 초과, 50행은 통과), 성공 결과 형식, 없는 컬럼, DB 꺼짐(포트 1, 비밀번호 미노출), `SELECT *`·`c.*` 개인정보 열, 화면용 결과, 다시 쓴 SQL과 원문(root로 실행) 결과 일치(CTE, UNION·UNION ALL ... LIMIT, 윈도 함수·WINDOW 절, 날짜 함수·INTERVAL).
+- 19개 모두 컨테이너와 스키마 준비 뒤 `NotImplementedError`로 실패하는 것을 확인했다. `:pipeline:test`도 `NotImplementedError`만 있다.
+- `integrationTest` 컴파일을 main과 묶고(`associateWith`), `kotlin("test-junit5")`로 바꿨다. `MySqlConnector`의 companion을 internal로 열었다.
+- 바꾼 파일: `pipeline/build.gradle.kts`, `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/TestMySql.kt`, `.../mysql/MySqlConnectorIT.kt`, `pipeline/CLAUDE.md`
+- 다음 반복(1.6): `ConnectionCheckIT`는 `TestMySql`을 쓴다. 비밀번호 틀림·스키마 없음·허용 테이블 없음은 `TestMySql.config(...)`나 `.copy(...)`로 만들고, "나중에 살아난 DB"는 공용 컨테이너를 멈추지 말고 따로 컨테이너를 띄우거나 늦게 띄우는 방식이 필요하다. 전체 권한 경고용 계정은 아직 없으니 `TestMySql`에 더한다.
 ---

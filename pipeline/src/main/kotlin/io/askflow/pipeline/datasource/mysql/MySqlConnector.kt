@@ -20,7 +20,8 @@ class MySqlConnector internal constructor(
 
     override fun checkConnection(): ConnectionStatus = TODO()
 
-    private companion object {
+    internal companion object {
+        // 통합 테스트가 커넥터와 같은 세션 설정으로 검사 없이 문장을 보내 볼 때도 쓴다
         fun createPool(config: TargetDbConfig): DataSource = TODO()
     }
 }
