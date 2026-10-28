@@ -10,5 +10,5 @@ fun interface TermCountProvider {
 /** 용어 사전이 아직 없을 때의 기본 구현. 늘 0이다 */
 @Component
 class ZeroTermCountProvider : TermCountProvider {
-    override fun termCount(): Int = TODO()
+    override fun termCount(): Int = 0
 }

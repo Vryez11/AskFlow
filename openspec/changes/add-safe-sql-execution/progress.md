@@ -191,3 +191,10 @@
 - 바꾼 파일: `api/src/main/kotlin/io/askflow/api/connection/TargetDbProperties.kt`, `api/src/main/resources/application.yml`, `tasks.md`
 - 다음 반복(4.2): `ConnectionStatusController`와 `ConnectionStatusResponse`만 채우면 된다. 조회마다 `checkConnection()`을 부른다.
 ---
+
+## 2026-10-28 - 4.2 TermCountProvider와 GET /api/connection/status
+- `ZeroTermCountProvider`는 0을 돌려준다. `ConnectionStatusController.status()`는 조회마다 `checkConnection()`을 불러 `ConnectionStatusResponse.from(status, termCount)`로 옮긴다. 필드를 하나씩 옮겨 커넥터 상태에 필드가 늘어도 응답에 새지 않게 했다. 연결됨일 때 `failure`는 `null`로 나가고 `jsonPath doesNotExist`를 통과한다.
+- 확인: `:api:test` 18개 모두 통과(`ConnectionStatusControllerTest` 6, `ApiApplicationConnectionFailureTests` 4 포함), `./gradlew ktlintCheck build` 통과.
+- 바꾼 파일: `api/src/main/kotlin/io/askflow/api/connection/ConnectionStatusController.kt`, `.../connection/TermCountProvider.kt`, `tasks.md`
+- 다음 반복(4.3): `.env`는 읽지 않는다. `.env.example`과 `README.md`만 고친다. 확인의 `bootRun` + `curl`은 로컬 MySQL(`docker compose up -d`)이 필요하다.
+---

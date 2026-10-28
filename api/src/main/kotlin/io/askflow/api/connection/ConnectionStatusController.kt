@@ -2,6 +2,7 @@ package io.askflow.api.connection
 
 import io.askflow.pipeline.datasource.ConnectionFailureReason
 import io.askflow.pipeline.datasource.ConnectionState
+import io.askflow.pipeline.datasource.ConnectionStatus
 import io.askflow.pipeline.datasource.DataSourceConnector
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -19,10 +20,10 @@ class ConnectionStatusController(
     private val termCountProvider: TermCountProvider,
 ) {
     @GetMapping("/status")
-    fun status(): ConnectionStatusResponse = TODO()
+    fun status(): ConnectionStatusResponse = ConnectionStatusResponse.from(connector.checkConnection(), termCountProvider.termCount())
 }
 
-/** 비밀번호는 담지 않는다 */
+/** 비밀번호는 담지 않는다. 필드를 하나씩 옮겨 커넥터 상태에 필드가 늘어도 응답에 새지 않게 한다 */
 data class ConnectionStatusResponse(
     val state: ConnectionState,
     val tableCount: Int,
@@ -37,4 +38,19 @@ data class ConnectionStatusResponse(
         val message: String,
         val checkKeys: List<String>,
     )
+
+    companion object {
+        fun from(
+            status: ConnectionStatus,
+            termCount: Int,
+        ) = ConnectionStatusResponse(
+            state = status.state,
+            tableCount = status.tableCount,
+            termCount = termCount,
+            writePrivileges = status.writePrivileges,
+            warnings = status.warnings,
+            failure = status.failure?.let { FailureResponse(it.reason, it.message, it.checkKeys) },
+            checkedAt = status.checkedAt,
+        )
+    }
 }
