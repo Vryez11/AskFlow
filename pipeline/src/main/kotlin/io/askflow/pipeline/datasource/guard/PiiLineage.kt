@@ -182,13 +182,14 @@ class PiiLineage(
             is Table -> {
                 val name = unquote(item.name)
                 val sourceName = item.alias?.let { unquote(it.name) } ?: name
-                val cte = ctes[name]
-                val caseOnlyCte = ctes.keys.any { it != name && it.equals(name, ignoreCase = true) }
-                if (item.schemaName == null && cte != null) {
-                    listOf(Source.Derived(sourceName, renamed(cte, aliasColumns(item.alias))))
-                } else if ((item.schemaName == null && caseOnlyCte) || !objects.isExactTable(name)) {
+                val cte = if (item.schemaName == null) ctes[name] else null
+                // 바깥 범위의 CTE까지 본다. 정확히 같은 CTE가 있어도 서버 설정에 따라 MySQL이 더 가까운 쪽을 읽을 수 있다
+                val caseOnlyCte = item.schemaName == null && ctes.keys.any { it != name && it.equals(name, ignoreCase = true) }
+                if (caseOnlyCte || (cte == null && !objects.isExactTable(name))) {
                     // 대소문자만 다르게 맞으면 서버 설정에 따라 다른 테이블이나 CTE로 읽힐 수 있다 (design 7장 "출처 이름")
                     listOf(Source.Unknown(sourceName))
+                } else if (cte != null) {
+                    listOf(Source.Derived(sourceName, renamed(cte, aliasColumns(item.alias))))
                 } else {
                     listOf(
                         Source.BaseTable(sourceName, objects.isView(name)) { column ->

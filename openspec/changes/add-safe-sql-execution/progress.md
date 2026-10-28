@@ -342,3 +342,11 @@
 - 막음 1건(작업 6.8): 이름이 정확히 같은 CTE가 있으면 대소문자만 다른 CTE가 함께 보이는지 보지 않고 그 CTE로 확정한다. `PiiLineage` 출처 해석에서 정확 일치 분기가 대소문자 확인보다 먼저다.
 - 제안 1건(6.8에 넣음): LATERAL과 대소문자만 다른 출처 가리기를 실제 MySQL로 확인하는 통합 테스트.
 ---
+
+## 2026-10-28 - 6.8 대소문자만 다른 CTE가 함께 보이면 정확히 같은 참조도 가림
+- `PiiLineage.sourcesOf`: 대소문자만 다른 CTE 확인(바깥 범위 CTE 포함, 스키마 없는 이름만)을 정확 일치 CTE 분기보다 먼저 한다. 테이블 목록 확인(`isExactTable`)은 CTE가 아닐 때만 한다.
+- 새 테스트: `PiiLineageCteCaseTest`(2, 같은 WITH와 바깥·안쪽 범위. 구현 전 둘 다 실패 확인), `PiiSourceNameIT`(2, 실제 MySQL에서 LATERAL 열과, 테이블과 대소문자만 다른 CTE가 보일 때의 열이 `forLlm()`에서 빠짐. 두 번째는 이 서버(`lower_case_table_names = 0`)에서 실제로는 안전한 값을 읽지만 원칙대로 가리는 것을 고정한다).
+- 확인: `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest` 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`, 위 테스트 파일들, `pipeline/CLAUDE.md`, `tasks.md`
+- 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
+---
