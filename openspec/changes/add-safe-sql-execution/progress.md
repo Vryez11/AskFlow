@@ -7,7 +7,7 @@
 - 개인정보 열 추적은 `PiiLineage(piiColumns).trace(sql): List<ItemPii>`(guard 패키지). 최상위 SELECT 항목마다 `PII`/`SAFE`/`STAR`. `STAR`(`*`, `t.*`)는 3.3에서 JDBC 메타데이터로 판정한다. 결과 열과 항목 수가 `STAR` 때문에 다를 수 있으니 3.3에서 맞춰야 한다. 2.4 구현: `STAR`는 기본 테이블만 펼친 `*`에만 나온다. 서브쿼리·CTE를 펼친 `*`, `*`가 섞인 UNION, VALUES 같은 문은 `PII` 한 항목이 되어 항목 수가 결과 열 수와 다를 수 있다. 3.3은 맞출 수 없으면(별표가 둘 이상이거나 별표 없이 수가 다름) 모든 열을 가린다(`PiiLineage` KDoc). `QueryResult.forLlm()`은 구현됐다.
 - 1장 동안 Stop 훅은 `:pipeline:test` 실패(모두 `NotImplementedError`)로 매번 막는다. 1장의 확인 조건이 실패라 정상이고, 구현을 당겨 하지 않는다. 2~5장에서도 뒤 작업의 테스트(pipeline 단위, web `ConnectionStatus.test.tsx`)가 남아 있는 동안은 같다. 실패가 모두 뒤 작업 몫인지만 확인한다. 3/3이면 훅이 사람에게 넘긴다. 실패가 `NotImplementedError` 말고도 있는지만 확인한다.
 - UNION 끝 LIMIT의 JSqlParser 함정은 `pipeline/CLAUDE.md`에 있다. LIMIT 다시 쓰기는 `SqlGuard.capLimit()`가 이를 처리한다.
-- `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 풀 생성은 companion의 `createPool`. `checkConnection()`은 아직 `TODO()`(3.5).
+- `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 풀 생성은 companion의 `createPool`. `checkConnection()`은 3.5에서 구현됐다. 허용 테이블을 비우면 `execute`는 첫 연결 확인 전까지 DB에 보내지 않고 `CONNECTION_FAILED`를 돌려준다(api가 시작할 때나 상태 조회 전에 `execute`를 부르면 이렇게 된다).
 - `SqlGuardTest`는 잠금·파일 쓰기 SELECT(`LOCK IN SHARE MODE`, `INTO OUTFILE`/`DUMPFILE`/`@변수`)를 `NOT_SELECT`로 기대하지만 JSqlParser 5.3은 이것들을 해석하지 못한다. 2.1에서 해석 전 원문 검사(문자열 리터럴 밖 토큰)로 `NOT_SELECT`를 돌려줘야 한다. `FOR UPDATE`/`FOR SHARE`는 해석된다.
 - `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다.
 - 권한 해석은 `GrantParser(schema).parse(lines): GrantCheck(writePrivileges, warnings)`, 연결 실패 분류는 `ConnectionFailureClassifier(password).classify(error): ConnectionFailure`. 둘 다 `mysql` 패키지의 internal이고 3.4에서 구현됐다. 분류기는 HikariCP가 감싼 예외(`SQLTransientConnectionException`)의 원인 사슬을 따라가야 하고, 원인 없는 풀 대기 시간 초과는 접속 불가로 본다.
@@ -174,4 +174,12 @@
 - `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7 통과. `:pipeline:test` 전체 통과. `ktlintCheck`, 모든 컴파일 통과.
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/GrantParser.kt`, `.../mysql/ConnectionFailureClassifier.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/mysql/GrantParserEdgeTest.kt`(새 파일), `pipeline/CLAUDE.md`, `tasks.md`
 - 다음 반복(3.5): `checkConnection()`. 실패는 `ConnectionFailureClassifier(config.password)`로 나누고, 권한은 `SHOW GRANTS FOR CURRENT_USER()` 줄을 `GrantParser(config.schema)`에 넣는다. 없는 허용 테이블(`TABLE_NOT_FOUND`, `askflow.target-db.allowed-tables`)은 분류기 밖에서 만든다. 빈 허용 목록이면 읽은 스키마 테이블로 `SqlGuard`를 바꿔야 한다("알아 둘 패턴"의 `ConnectionCheckIT` 항목).
+---
+
+## 2026-10-28 - 3.5 checkConnection
+- `MySqlConnector.checkConnection()`: 연결을 하나 빌려(끝나면 rollback) `SHOW GRANTS FOR CURRENT_USER()` → `GrantParser`, `information_schema.SCHEMATA`로 설정 스키마 확인(없으면 `SCHEMA_UNAVAILABLE`, 접속 주소의 스키마와 설정 스키마가 달라도 잡힘), `information_schema.TABLES`(테이블·뷰)로 허용 테이블 확인(없는 이름만 `message`에 담아 `TABLE_NOT_FOUND`). `SQLException`은 `ConnectionFailureClassifier`로 나눈다. 실패 상태는 테이블 수 0, 권한·경고 빈 목록.
+- 빈 허용 목록: 연결 확인마다 읽은 스키마 테이블·뷰로 `schemaGuard`(`@Volatile`)를 새로 만든다. 그 전의 `execute`는 DB에 보내지 않고 `CONNECTION_FAILED`(design 6장). 새 `EmptyAllowListIT`(2개)로 확인했다.
+- 확인: `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest` 통과(`ConnectionCheckIT` 11, `MySqlConnectorIT` 19, `ReadOnlySessionIT` 1, `EmptyAllowListIT` 2).
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/EmptyAllowListIT.kt`(새 파일), `tasks.md`
+- 다음 반복(4.1): "알아 둘 패턴"의 4.1 항목대로 `TargetDbProperties` 검증과 `application.yml`을 넣는다. `ApiApplicationTests`·`TargetDbPropertiesTest`가 기대하는 풀 생성(`createPool`)은 이제 있다.
 ---

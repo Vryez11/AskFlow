@@ -2,6 +2,9 @@ package io.askflow.pipeline.datasource.mysql
 
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import io.askflow.pipeline.datasource.ConnectionFailure
+import io.askflow.pipeline.datasource.ConnectionFailureReason
+import io.askflow.pipeline.datasource.ConnectionState
 import io.askflow.pipeline.datasource.ConnectionStatus
 import io.askflow.pipeline.datasource.DataSourceConnector
 import io.askflow.pipeline.datasource.ExecutionError
@@ -19,6 +22,7 @@ import java.sql.SQLException
 import java.sql.SQLTimeoutException
 import java.sql.SQLTransientConnectionException
 import java.time.Duration
+import java.time.Instant
 import javax.sql.DataSource
 
 /**
@@ -31,18 +35,111 @@ class MySqlConnector internal constructor(
 ) : DataSourceConnector {
     constructor(config: TargetDbConfig) : this(config, createPool(config))
 
-    // 빈 허용 목록이면 연결 확인에서 읽은 스키마 테이블을 쓴다 (3.5)
-    private val guard = SqlGuard(config.schema, config.allowedTables.toSet(), config.maxRows)
+    private val configuredGuard =
+        if (config.allowedTables.isEmpty()) null else SqlGuard(config.schema, config.allowedTables.toSet(), config.maxRows)
+
+    // 빈 허용 목록이면 연결 확인에서 읽은 스키마의 테이블·뷰로 검사한다 (design 6장)
+    @Volatile
+    private var schemaGuard: SqlGuard? = null
     private val lineage = PiiLineage(config.piiColumns)
     private val marker = PiiColumnMarker(config.piiColumns)
+    private val failureClassifier = ConnectionFailureClassifier(config.password)
+    private val grantParser = GrantParser(config.schema)
 
-    override fun execute(sql: String): ExecutionOutcome =
-        when (val checked = guard.check(sql)) {
+    override fun execute(sql: String): ExecutionOutcome {
+        // 허용 목록을 아직 못 읽었으면 검사할 수 없으니 DB에 보내지 않는다
+        val guard = configuredGuard ?: schemaGuard ?: return ExecutionOutcome.Failure(connectionFailed())
+        return when (val checked = guard.check(sql)) {
             is GuardResult.Rejected -> ExecutionOutcome.Failure(checked.error)
             is GuardResult.Passed -> run(checked.sql)
         }
+    }
 
-    override fun checkConnection(): ConnectionStatus = TODO()
+    override fun checkConnection(): ConnectionStatus {
+        val checkedAt = Instant.now()
+        return try {
+            dataSource.connection.use { connection ->
+                try {
+                    inspect(connection, checkedAt)
+                } finally {
+                    connection.rollback()
+                }
+            }
+        } catch (e: SQLException) {
+            failed(failureClassifier.classify(e), checkedAt)
+        }
+    }
+
+    /** 권한 → 스키마 → 허용 테이블 순서로 확인한다 (design 5·6장) */
+    private fun inspect(
+        connection: Connection,
+        checkedAt: Instant,
+    ): ConnectionStatus {
+        val grants = grantParser.parse(strings(connection, "SHOW GRANTS FOR CURRENT_USER()"))
+        if (strings(connection, SCHEMA_QUERY, config.schema).isEmpty()) {
+            return failed(schemaUnavailable(), checkedAt)
+        }
+        val schemaTables = strings(connection, TABLES_QUERY, config.schema)
+        val tableCount =
+            if (config.allowedTables.isEmpty()) {
+                schemaGuard = SqlGuard(config.schema, schemaTables.toSet(), config.maxRows)
+                schemaTables.size
+            } else {
+                val existing = schemaTables.map { it.lowercase() }.toSet()
+                val missing = config.allowedTables.filter { it.lowercase() !in existing }
+                if (missing.isNotEmpty()) return failed(tableNotFound(missing), checkedAt)
+                config.allowedTables.distinctBy { it.lowercase() }.size
+            }
+        return ConnectionStatus(
+            state = ConnectionState.CONNECTED,
+            tableCount = tableCount,
+            writePrivileges = grants.writePrivileges,
+            warnings = grants.warnings,
+            failure = null,
+            checkedAt = checkedAt,
+        )
+    }
+
+    /** 고정 조회의 첫 열을 모두 읽는다. 연결 확인 전용이라 바깥에서 SQL을 받지 않는다 */
+    private fun strings(
+        connection: Connection,
+        sql: String,
+        vararg params: String,
+    ): List<String> =
+        connection.prepareStatement(sql).use { statement ->
+            params.forEachIndexed { i, param -> statement.setString(i + 1, param) }
+            statement.executeQuery().use { rs ->
+                buildList { while (rs.next()) add(rs.getString(1)) }
+            }
+        }
+
+    private fun failed(
+        failure: ConnectionFailure,
+        checkedAt: Instant,
+    ): ConnectionStatus =
+        ConnectionStatus(
+            state = ConnectionState.FAILED,
+            tableCount = 0,
+            writePrivileges = emptyList(),
+            warnings = emptyList(),
+            failure = failure,
+            checkedAt = checkedAt,
+        )
+
+    // 접속 주소의 스키마와 설정 스키마가 달라도 여기서 걸린다. 권한 없는 스키마는 SCHEMATA에 보이지 않는다
+    private fun schemaUnavailable(): ConnectionFailure =
+        ConnectionFailure(
+            reason = ConnectionFailureReason.SCHEMA_UNAVAILABLE,
+            message = "스키마가 없거나 이 계정에 스키마 접근 권한이 없습니다.",
+            checkKeys = listOf("askflow.target-db.schema"),
+        )
+
+    private fun tableNotFound(missing: List<String>): ConnectionFailure =
+        ConnectionFailure(
+            reason = ConnectionFailureReason.TABLE_NOT_FOUND,
+            message = "허용 테이블 중 스키마에 없는 것이 있습니다: ${missing.joinToString(", ")}",
+            checkKeys = listOf("askflow.target-db.allowed-tables"),
+        )
 
     private fun run(sql: String): ExecutionOutcome =
         try {
@@ -153,6 +250,11 @@ class MySqlConnector internal constructor(
 
         /** MySQL ER_QUERY_TIMEOUT: max_execution_time 초과 */
         private const val MAX_EXECUTION_TIME_EXCEEDED = 3024
+
+        private const val SCHEMA_QUERY = "SELECT SCHEMA_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = ?"
+
+        // 테이블과 뷰 모두
+        private const val TABLES_QUERY = "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?"
 
         // 통합 테스트가 커넥터와 같은 세션 설정으로 검사 없이 문장을 보내 볼 때도 쓴다
         fun createPool(config: TargetDbConfig): DataSource =
