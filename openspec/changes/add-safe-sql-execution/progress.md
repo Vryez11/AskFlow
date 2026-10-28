@@ -5,6 +5,7 @@
 - 공개 타입은 `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/`에 있다. 오류는 `ExecutionError(kind, message, cause, checkPoints)`이고, 테스트는 `kind`와 `cause`(거부한 테이블·함수 이름, 상한 값), `checkPoints`(설정 키)를 본다. 오류 종류의 한국어 이름은 `ExecutionErrorKind.label`.
 - `SqlGuard(schema, allowedTables, maxRows).check(sql)`은 `GuardResult.Passed(sql = 다시 쓴 SQL)` 또는 `Rejected(error)`를 돌려준다.
 - 개인정보 열 추적은 `PiiLineage(piiColumns).trace(sql): List<ItemPii>`(guard 패키지). 최상위 SELECT 항목마다 `PII`/`SAFE`/`STAR`. `STAR`(`*`, `t.*`)는 3.3에서 JDBC 메타데이터로 판정한다. 결과 열과 항목 수가 `STAR` 때문에 다를 수 있으니 3.3에서 맞춰야 한다.
+- 1장 동안 Stop 훅은 `:pipeline:test` 실패(모두 `NotImplementedError`)로 매번 막는다. 1장의 확인 조건이 실패라 정상이고, 구현을 당겨 하지 않는다. 3/3이면 훅이 사람에게 넘긴다. 실패가 `NotImplementedError` 말고도 있는지만 확인한다.
 - UNION 끝 LIMIT의 JSqlParser 함정은 `pipeline/CLAUDE.md`에 있다. 2.3 LIMIT 다시 쓰기에서 꼭 본다.
 - `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 본문은 `TODO()`다. 풀 생성은 companion의 `createPool`.
 - `SqlGuardTest`는 잠금·파일 쓰기 SELECT(`LOCK IN SHARE MODE`, `INTO OUTFILE`/`DUMPFILE`/`@변수`)를 `NOT_SELECT`로 기대하지만 JSqlParser 5.3은 이것들을 해석하지 못한다. 2.1에서 해석 전 원문 검사(문자열 리터럴 밖 토큰)로 `NOT_SELECT`를 돌려줘야 한다. `FOR UPDATE`/`FOR SHARE`는 해석된다.
