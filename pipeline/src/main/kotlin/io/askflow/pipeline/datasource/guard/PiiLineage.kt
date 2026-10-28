@@ -274,17 +274,17 @@ class PiiLineage(
         private fun isCount(function: Function): Boolean =
             function.multipartName.size == 1 && unquote(function.name).equals("COUNT", ignoreCase = true)
 
-        /** 테이블을 적었으면 그 출처에서, 안 적었으면 보이는 모든 출처에서 찾는다. 못 찾으면 개인정보로 본다 */
+        /**
+         * 테이블을 적었으면 바깥 범위까지 그 이름의 출처 모두에서, 안 적었으면 보이는 모든 출처에서 찾는다.
+         * MySQL은 안쪽 테이블에 없는 컬럼을 바깥의 같은 별칭에서 찾는데, 기본 테이블의 컬럼 목록은 모르니
+         * 같은 이름 출처 중 하나라도 개인정보면 가린다. 못 찾으면 개인정보로 본다.
+         */
         private fun isPiiColumn(column: Column): Boolean {
             val name = unquote(column.columnName)
             val table = column.table?.name?.let(::unquote)
-            if (table != null) return findSource(scope, table)?.pii(name) ?: true
-            val found =
-                scope.chain
-                    .flatMap { it.sources }
-                    .toList()
-                    .piiOf(name)
-            return found ?: true
+            val candidates = scope.chain.flatMap { it.sources }
+            val sources = if (table == null) candidates else candidates.filter { it.name.equals(table, ignoreCase = true) }
+            return sources.toList().piiOf(name) ?: true
         }
     }
 

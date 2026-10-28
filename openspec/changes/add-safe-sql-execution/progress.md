@@ -257,3 +257,11 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/RawSqlScanner.kt`, `.../guard/SqlGuard.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/SqlGuardCommentTest.kt`, `pipeline/CLAUDE.md`, `tasks.md`
 - 다음 반복: 6.2(개인정보 열 추적의 같은 별칭). 테스트는 `PiiLineageTest`·`MySqlConnectorIT`가 아니라 새 파일에 더해야 한다.
 ---
+
+## 2026-10-28 - 6.2 서브쿼리의 같은 별칭에 속는 개인정보 열 추적을 고침
+- `PiiLineage`의 `isPiiColumn`이 테이블을 적은 컬럼도 가장 안쪽 출처 하나가 아니라 바깥 범위까지 같은 이름 출처를 모두 보고, 하나라도 개인정보면 가리게 했다. 기본 테이블의 컬럼 목록을 모르니 MySQL이 어느 쪽에서 찾을지 판단하지 않는다.
+- 새 테스트: 단위 `PiiLineageShadowTest`(3개: 스칼라 서브쿼리, 조인한 바깥 테이블과 같은 별칭, 개인정보 아닌 경우는 그대로), 통합 `PiiShadowAliasIT`(실제 MySQL이 바깥 customers에서 값을 찾는 것과 `forLlm()`에서 그 열이 빠지는 것). 구현 전 셋 다 의도한 이유로 실패한 것을 확인했다.
+- 확인: `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest`, `./gradlew ktlintCheck build` 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/PiiLineageShadowTest.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/PiiShadowAliasIT.kt`, `tasks.md`
+- 다음 반복: 6.3(LLM에 보낼 실행 오류). 단위 테스트와 통합 테스트 모두 새 파일에 더한다.
+---
