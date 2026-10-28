@@ -15,7 +15,14 @@ class QueryResult(
 ) {
     val rowCount: Int get() = rows.size
 
-    fun forLlm(): LlmSafeResult = TODO()
+    fun forLlm(): LlmSafeResult {
+        val kept = columns.indices.filterNot { columns[it].pii }
+        return LlmSafeResult(
+            columns = kept.map { columns[it].name },
+            rows = rows.map { row -> kept.map { row[it] } },
+            removedColumns = columns.filter { it.pii }.map { it.name },
+        )
+    }
 }
 
 data class ResultColumn(

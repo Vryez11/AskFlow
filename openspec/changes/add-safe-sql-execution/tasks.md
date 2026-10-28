@@ -18,7 +18,7 @@
 - [x] 2.1 실행 주석·힌트 검사, 해석, 문 개수·종류 검사를 구현한다. 확인: `SqlGuardTest`의 SELECT 하나만, 실행 주석과 힌트 시나리오 통과
 - [x] 2.2 테이블 visitor(CTE 이름 제외, 스키마 비교)와 거부 함수 검사를 구현한다. 확인: `SqlGuardTest` 전체 통과
 - [x] 2.3 LIMIT 다시 쓰기(`maxRows + 1`)와 다시 쓴 SQL 만들기를 구현한다. 확인: `LimitRewriteTest` 통과, 보통 주석 시나리오에서 다시 쓴 SQL에 주석이 없음
-- [ ] 2.4 개인정보 열 해석 트리 추적(별칭, 서브쿼리·CTE, COUNT만 예외, 모르면 가림)과 `QueryResult.forLlm()`을 구현한다. 확인: `PiiLineageTest` 통과
+- [x] 2.4 개인정보 열 해석 트리 추적(별칭, 서브쿼리·CTE, COUNT만 예외, 모르면 가림)과 `QueryResult.forLlm()`을 구현한다. 확인: `PiiLineageTest` 통과
 
 ## 3. MySQL 커넥터 (pipeline, 통합)
 

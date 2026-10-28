@@ -1,5 +1,9 @@
 package io.askflow.pipeline.datasource.guard
 
+import io.askflow.pipeline.datasource.guard.JsqlTree.fieldsOf
+import io.askflow.pipeline.datasource.guard.JsqlTree.isLeaf
+import io.askflow.pipeline.datasource.guard.JsqlTree.isNode
+import io.askflow.pipeline.datasource.guard.JsqlTree.unquote
 import net.sf.jsqlparser.expression.Function
 import net.sf.jsqlparser.schema.Column
 import net.sf.jsqlparser.schema.Table
@@ -7,8 +11,6 @@ import net.sf.jsqlparser.statement.Statement
 import net.sf.jsqlparser.statement.select.AllTableColumns
 import net.sf.jsqlparser.statement.select.Select
 import net.sf.jsqlparser.statement.select.WithItem
-import java.lang.reflect.Field
-import java.lang.reflect.Modifier
 import java.util.IdentityHashMap
 
 /**
@@ -67,7 +69,7 @@ internal object ReferenceCollector {
                     functions += node.multipartName.joinToString(".") { unquote(it) }
                     walkFields(node, cteNames)
                 }
-                else -> if (node.javaClass.name.startsWith(JSQLPARSER_PACKAGE)) walkFields(node, cteNames)
+                else -> if (isNode(node)) walkFields(node, cteNames)
             }
         }
 
@@ -117,26 +119,4 @@ internal object ReferenceCollector {
             }
         }
     }
-
-    private const val JSQLPARSER_PACKAGE = "net.sf.jsqlparser."
-
-    private val fieldCache = HashMap<Class<*>, List<Field>>()
-
-    /** 클래스 계층의 인스턴스 필드. 파서 내부 노드(`transient`)는 뺀다 */
-    private fun fieldsOf(type: Class<*>): List<Field> =
-        synchronized(fieldCache) {
-            fieldCache.getOrPut(type) {
-                generateSequence(type) { it.superclass }
-                    .takeWhile { it.name.startsWith(JSQLPARSER_PACKAGE) }
-                    .flatMap { it.declaredFields.asSequence() }
-                    .filterNot { Modifier.isStatic(it.modifiers) || Modifier.isTransient(it.modifiers) }
-                    .onEach { it.isAccessible = true }
-                    .toList()
-            }
-        }
-
-    private fun isLeaf(node: Any): Boolean =
-        node is CharSequence || node is Number || node is Boolean || node is Char || node is Enum<*> || node is Class<*>
-
-    private fun unquote(name: String): String = name.removeSurrounding("`").removeSurrounding("\"")
 }
