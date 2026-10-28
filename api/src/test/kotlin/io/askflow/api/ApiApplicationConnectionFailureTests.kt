@@ -4,9 +4,12 @@ import io.askflow.pipeline.datasource.TargetDbConfig
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+import org.springframework.test.context.DynamicPropertyRegistry
+import org.springframework.test.context.DynamicPropertySource
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import java.time.Duration
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -14,8 +17,9 @@ import kotlin.test.assertFalse
 /**
  * data-connection "연결 실패에도 앱은 뜬다" (F-003). `application.yml`의 기본값으로 앱 전체를 띄운다.
  * MYSQL_PORT=1은 아무것도 듣지 않는 포트라, 분석 대상 DB가 꺼진 것과 같다.
+ * 비밀번호는 비밀 값 검사에 걸리지 않게 실행마다 만들어 넣는다.
  */
-@SpringBootTest(properties = ["MYSQL_PORT=1", "ASKFLOW_READER_PASSWORD=${ApiApplicationConnectionFailureTests.PASSWORD}"])
+@SpringBootTest(properties = ["MYSQL_PORT=1"])
 @AutoConfigureMockMvc
 class ApiApplicationConnectionFailureTests {
     @Autowired
@@ -62,6 +66,12 @@ class ApiApplicationConnectionFailureTests {
     }
 
     companion object {
-        const val PASSWORD = "test-secret-pw-7731"
+        val PASSWORD = "pw-${UUID.randomUUID()}"
+
+        @JvmStatic
+        @DynamicPropertySource
+        fun readerPassword(registry: DynamicPropertyRegistry) {
+            registry.add("ASKFLOW_READER_PASSWORD") { PASSWORD }
+        }
     }
 }

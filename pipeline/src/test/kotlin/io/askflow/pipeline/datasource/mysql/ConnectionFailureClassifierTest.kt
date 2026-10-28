@@ -5,6 +5,7 @@ import java.net.ConnectException
 import java.sql.SQLException
 import java.sql.SQLNonTransientConnectionException
 import java.sql.SQLTransientConnectionException
+import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -12,7 +13,7 @@ import kotlin.test.assertTrue
 
 /** data-connection "연결 실패에도 앱은 뜬다"의 실패 원인 분류 (F-003) */
 class ConnectionFailureClassifierTest {
-    private val password = "s3cret-pw"
+    private val password = "pw-${UUID.randomUUID()}"
     private val classifier = ConnectionFailureClassifier(password)
 
     // HikariCP는 연결을 못 얻으면 마지막 연결 예외를 원인으로 감싸 던진다

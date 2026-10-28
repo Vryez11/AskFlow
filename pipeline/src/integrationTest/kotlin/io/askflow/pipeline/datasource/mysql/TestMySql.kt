@@ -5,6 +5,7 @@ import org.testcontainers.mysql.MySQLContainer
 import java.sql.Connection
 import java.sql.DriverManager
 import java.time.Duration
+import java.util.UUID
 
 /**
  * 통합 테스트가 함께 쓰는 MySQL 8.4 (design 9장). 처음 쓸 때 한 번 띄우고 테스트용 스키마와 계정을 만든다.
@@ -13,12 +14,15 @@ import java.time.Duration
 object TestMySql {
     const val SCHEMA = "olist"
     const val READER = "askflow_reader"
-    const val READER_PASSWORD = "reader-pw-7731"
+    val READER_PASSWORD = testPassword()
     const val WRITER = "askflow_writer"
-    const val WRITER_PASSWORD = "writer-pw-7731"
+    val WRITER_PASSWORD = testPassword()
     const val ADMIN = "askflow_admin"
-    const val ADMIN_PASSWORD = "admin-pw-7731"
+    val ADMIN_PASSWORD = testPassword()
     const val NUMBERS = 5000
+
+    /** 테스트 계정 비밀번호. 버리는 컨테이너에만 쓰지만 비밀 값 검사에 걸리지 않게 코드에 고정 값을 두지 않는다 */
+    fun testPassword(): String = "pw-${UUID.randomUUID()}"
 
     /** reader가 접근할 수 없는 다른 스키마 */
     const val FORBIDDEN_SCHEMA = "hr"

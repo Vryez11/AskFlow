@@ -136,9 +136,9 @@ class PiiViewIT {
     private companion object {
         const val SCHEMA = "pii_views"
         const val NO_VIEW_USER = "askflow_noview"
-        const val NO_VIEW_PASSWORD = "noview-pw-7731"
+        val NO_VIEW_PASSWORD = TestMySql.testPassword()
         const val EXEC_USER = "askflow_exec"
-        const val EXEC_PASSWORD = "exec-pw-7731"
+        val EXEC_PASSWORD = TestMySql.testPassword()
 
         val prepared: Unit by lazy {
             TestMySql.root { connection ->
