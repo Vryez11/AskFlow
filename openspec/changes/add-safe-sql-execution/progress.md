@@ -86,3 +86,12 @@
 - 바꾼 파일: `web/src/connection/types.ts`, `.../ConnectionStatus.tsx`(새 골격), `.../ConnectionStatus.test.tsx`, `web/CLAUDE.md`(새 파일)
 - 다음 반복(2.1): 1장이 끝났다. 2.1부터 구현이다. 잠금·파일 쓰기 SELECT의 원문 검사("알아 둘 패턴")를 잊지 않는다.
 ---
+
+## 2026-10-28 - 2.1 실행 주석·힌트, 해석, 문 개수·종류 검사
+- `SqlGuard.check()`를 구현했다: 원문 검사(실행 주석·힌트 → `NOT_SELECT`, 잠금·`INTO` → `NOT_SELECT`) → `parseStatements`(실패 → `PARSE_FAILED`, 0개도 `PARSE_FAILED`) → 문이 둘 이상이면 `MULTIPLE_STATEMENTS` → `Select`가 아니면 `NOT_SELECT` → 지금은 `statement.toString()`을 `Passed`로 돌려준다.
+- 원문 검사는 새 `guard/RawSqlScanner`(internal). 실행 주석·힌트는 리터럴만 건너뛰고 보통 주석 안에서도 찾는다(넉넉히 거부). 잠금·`INTO`는 리터럴·주석을 공백으로 바꾼 뒤 정규식으로 찾아 서브쿼리 안까지 잡는다. 그래서 `FOR UPDATE`/`FOR SHARE`도 AST가 아니라 여기서 막힌다.
+- 검사 오류의 `checkPoints`는 `["실행하려던 SQL"]`로 뒀다.
+- `SqlGuardTest` 22개 중 15개 통과. 남은 7개는 테이블·함수 검사와 `MySqlConnector.execute`(2.2)다. `LimitRewriteTest`는 이제 `NotImplementedError`가 아니라 단언 실패(2.3).
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/SqlGuard.kt`, `.../guard/RawSqlScanner.kt`(새 파일), `pipeline/CLAUDE.md`
+- 다음 반복(2.2): `SqlGuardTest`의 "DB에 닿지 않음"은 `MySqlConnector.execute`가 검사에서 걸리면 DB를 건드리지 않고 `Failure`를 돌려주게 해야 통과한다. 커넥터 쪽 `SqlGuard`의 허용 테이블은 `config.allowedTables`(빈 목록 처리는 3.5). 실행 부분은 3.1이니 검사 통과 뒤는 아직 `TODO()`로 둬도 된다.
+---
