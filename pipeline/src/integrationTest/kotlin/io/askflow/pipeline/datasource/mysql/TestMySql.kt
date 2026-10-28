@@ -36,6 +36,8 @@ object TestMySql {
     private val container: MySQLContainer by lazy {
         MySQLContainer("mysql:8.4")
             .withDatabaseName(SCHEMA)
+            // 테스트마다 커넥터(풀 크기 4)를 새로 만들고 닫지 않아, 느린 CI에서 기본 상한 151개를 넘겼다
+            .withCommand("--max-connections=1000")
             .also { it.start() }
             .also { createSchema(it) }
     }
