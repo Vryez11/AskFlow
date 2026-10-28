@@ -295,3 +295,13 @@
 - 사람이 정했다: 뷰 정의를 따라가지 않고, 뷰에서 온 열·생성 컬럼·저장 함수를 부른 열은 모두 개인정보로 본다. 스펙 시나리오(뷰에서 온 열, 뷰의 행 수, 생성 컬럼, 실행 사이에 바뀐 스키마, 저장 함수)와 design 7장을 바꾸고 작업 6.5로 넣었다.
 - 사람이 `PiiViewIT`를 새 스펙에 맞춰 고쳤다(8개 중 5개가 지금 구현에서 실패, 3개 통과). 정의 추적만 보던 `PiiColumnResolverTest`는 지웠다. 6.5는 이 테스트를 바꾸지 않고 통과시켜야 한다.
 ---
+
+## 2026-10-28 - 6.5 뷰·생성 컬럼·저장 함수를 모두 개인정보로 봄
+- `PiiColumnResolver`(뷰 정의·생성식 추적)를 지우고 새 `guard/PiiSchemaObjects`(뷰 이름, (테이블, 컬럼) 생성 컬럼, 저장 함수 이름)를 만들었다. 설정의 `"table.column"`은 `piiColumnPairs`로 한 번만 쌍으로 나눈다.
+- `PiiLineage(piiColumns, objects)`: 뷰를 출처로 둔 열은 모두 개인정보(COUNT 예외 그대로), 뷰를 펼친 `*`는 `STAR`가 아니라 `PII`, 생성 컬럼은 개인정보 컬럼, 저장 함수나 스키마를 붙인 함수를 부른 항목은 개인정보. `PiiColumnMarker(piiColumns, objects)`: 메타데이터 테이블이 뷰이거나 (테이블, 컬럼)이 생성 컬럼이면 가린다.
+- `MySqlConnector`: 캐시(`piiJudge`)를 없애고 `run`이 실행마다 같은 연결에서 UNION ALL 조회 한 번(`TABLES`의 VIEW, `COLUMNS`의 `GENERATION_EXPRESSION <> ''`, `ROUTINES`의 FUNCTION, 스키마는 설정 스키마와 `DATABASE()`)으로 읽는다. 읽지 못하면 `CONNECTION_FAILED`. 뷰는 SHOW VIEW 없이도 보이게 `VIEWS`가 아니라 `TABLES`에서 읽는다. `checkConnection`은 더 읽지 않는다.
+- 새 테스트: `PiiSchemaObjectsTest`(6), `PiiColumnMarkerObjectsTest`(3). JSqlParser는 `` `odd.table` ``처럼 점이 든 따옴표 테이블 이름을 스키마와 테이블로 나눠 검사기가 거부하므로, 점 든 이름의 쌍 비교는 메타데이터 쪽에서만 확인했다.
+- 확인: `PiiViewIT` 8개 통과, `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest`, `./gradlew ktlintCheck build`, `openspec validate --all --strict` 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiSchemaObjects.kt`(새 파일), `.../guard/PiiLineage.kt`, `.../guard/PiiColumnResolver.kt`(지움), `.../mysql/PiiColumnMarker.kt`, `.../mysql/MySqlConnector.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/PiiSchemaObjectsTest.kt`, `.../mysql/PiiColumnMarkerObjectsTest.kt`, `pipeline/CLAUDE.md`, `tasks.md`
+- 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
+---

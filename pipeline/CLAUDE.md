@@ -16,6 +16,6 @@
 - Connector/J 메타데이터의 `getColumnLabel`은 별칭, `getTableName`·`getColumnName`은 원래 테이블·컬럼이다. 계산한 열은 둘 다 빈 문자열이다. 결과 열의 개인정보 표시는 `mysql/PiiColumnMarker`가 `PiiLineage` 판정과 이 메타데이터를 합쳐 정한다.
 - HikariCP는 연결을 못 얻으면 안쪽 예외를 원인으로 감싼 `SQLTransientConnectionException`을 던지고 안쪽 SQLState를 그대로 옮긴다. 예외를 분류할 때는 바깥 종류가 아니라 원인 사슬의 오류 코드부터 본다(`mysql/ConnectionFailureClassifier`).
 - LLM에는 `QueryResult.forLlm()`(`LlmSafeResult`)과 `ExecutionError.forLlm()`(`LlmSafeError`)만 보낸다. 둘 다 생성자가 internal이다. MySQL 오류 메시지는 함수 인자 값(예: `GTID_SUBSET`)을 담을 수 있어 `LlmSafeError`에는 DB 오류의 원인을 넣지 않는다.
-- 개인정보 판정은 설정 값이 아니라 `guard/PiiColumnResolver`가 뷰 정의·생성식을 따라가 만든 "실제 개인정보 컬럼"으로 한다. `MySqlConnector`는 연결 확인마다, 아직 없으면 `execute` 때 이를 다시 읽는다.
+- 뷰, 생성 컬럼, 저장 함수는 정의를 따라가지 않고 모두 개인정보로 본다(`guard/PiiSchemaObjects`). 정의 추적은 검토마다 빠지는 경우가 나와 걷어 냈으니 다시 넣지 않는다. `MySqlConnector`는 실행마다 같은 연결에서 `information_schema`로 이 목록을 읽어 `PiiLineage`와 `PiiColumnMarker`에 넘기고, 읽지 못하면 실행하지 않는다. 캐시하지 않는다. 테이블·컬럼은 `"table.column"` 문자열이 아니라 쌍으로 다룬다(설정 값만 `piiColumnPairs`로 나눈다).
 - 통합 테스트가 테이블·뷰를 더해야 하면 공용 스키마 `olist`가 아니라 따로 만든 스키마에 둔다. `ConnectionCheckIT`가 `olist`의 테이블 수를 센다(예: `PiiViewIT`의 `pii_views`).
 - 분석 대상 DB 코드는 `io.askflow.pipeline.datasource`(공개 타입), `.guard`(SQL 검사), `.mysql`(구현체)에 둔다.

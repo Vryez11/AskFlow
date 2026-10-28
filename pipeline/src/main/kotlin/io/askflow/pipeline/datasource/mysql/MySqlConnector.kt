@@ -13,12 +13,10 @@ import io.askflow.pipeline.datasource.ExecutionOutcome
 import io.askflow.pipeline.datasource.QueryResult
 import io.askflow.pipeline.datasource.ResultColumn
 import io.askflow.pipeline.datasource.TargetDbConfig
-import io.askflow.pipeline.datasource.guard.GeneratedColumn
 import io.askflow.pipeline.datasource.guard.GuardResult
-import io.askflow.pipeline.datasource.guard.PiiColumnResolver
 import io.askflow.pipeline.datasource.guard.PiiLineage
+import io.askflow.pipeline.datasource.guard.PiiSchemaObjects
 import io.askflow.pipeline.datasource.guard.SqlGuard
-import io.askflow.pipeline.datasource.guard.ViewDefinition
 import java.sql.Connection
 import java.sql.ResultSetMetaData
 import java.sql.SQLException
@@ -44,10 +42,6 @@ class MySqlConnector internal constructor(
     // 빈 허용 목록이면 연결 확인에서 읽은 스키마의 테이블·뷰로 검사한다 (design 6장)
     @Volatile
     private var schemaGuard: SqlGuard? = null
-
-    // 설정의 개인정보 컬럼에 뷰·생성 컬럼 정의를 따라간 컬럼을 더한 판정기. 연결 확인마다 다시 읽는다 (design 7장)
-    @Volatile
-    private var piiJudge: PiiJudge? = null
     private val failureClassifier = ConnectionFailureClassifier(config.password)
     private val grantParser = GrantParser(config.schema)
 
@@ -84,7 +78,6 @@ class MySqlConnector internal constructor(
         if (strings(connection, SCHEMA_QUERY, config.schema).isEmpty()) {
             return failed(schemaUnavailable(), checkedAt)
         }
-        piiJudge = readPiiJudge(connection)
         val schemaTables = strings(connection, TABLES_QUERY, config.schema)
         val tableCount =
             if (config.allowedTables.isEmpty()) {
@@ -147,48 +140,42 @@ class MySqlConnector internal constructor(
             checkKeys = listOf("askflow.target-db.allowed-tables"),
         )
 
-    /** 뷰 정의와 생성식을 읽어 실제 개인정보 컬럼으로 판정기를 만든다 */
-    private fun readPiiJudge(connection: Connection): PiiJudge {
-        val columns = rows(connection, COLUMNS_QUERY, config.schema)
-        val columnsByTable = columns.groupBy({ it[0].orEmpty() }, { it[1].orEmpty() })
-        // 정의를 볼 권한이 없으면 VIEW_DEFINITION이 빈 문자열이다
-        val views =
-            rows(connection, VIEWS_QUERY, config.schema).map { (name, definition) ->
-                ViewDefinition(name.orEmpty(), definition.orEmpty(), columnsByTable[name].orEmpty())
-            }
-        val generated =
-            columns
-                .filter { !it[2].isNullOrEmpty() }
-                .map { (table, column, expression) -> GeneratedColumn(table.orEmpty(), column.orEmpty(), expression.orEmpty()) }
-        val pii = PiiColumnResolver.resolve(config.piiColumns, views, generated)
-        return PiiJudge(PiiLineage(pii), PiiColumnMarker(pii))
-    }
-
-    /** 고정 조회의 모든 열을 읽는다. 연결 확인 전용이라 바깥에서 SQL을 받지 않는다 */
-    private fun rows(
-        connection: Connection,
-        sql: String,
-        vararg params: String,
-    ): List<List<String?>> =
-        connection.prepareStatement(sql).use { statement ->
-            params.forEachIndexed { i, param -> statement.setString(i + 1, param) }
+    /**
+     * 정의를 따라가지 않고 개인정보로 볼 뷰, 생성 컬럼, 저장 함수를 한 번의 조회로 읽는다 (design 7장).
+     * 접속 주소의 기본 스키마가 설정 스키마와 달라도 테이블 이름만 쓴 SQL은 기본 스키마로 가니 둘 다 읽는다.
+     */
+    private fun readSchemaObjects(connection: Connection): PiiSchemaObjects {
+        val views = mutableListOf<String>()
+        val generated = mutableListOf<Pair<String, String>>()
+        val functions = mutableListOf<String>()
+        connection.prepareStatement(SCHEMA_OBJECTS_QUERY).use { statement ->
+            repeat(3) { statement.setString(it + 1, config.schema) }
             statement.executeQuery().use { rs ->
-                val count = rs.metaData.columnCount
-                buildList { while (rs.next()) add((1..count).map { rs.getString(it) }) }
+                while (rs.next()) {
+                    val name = rs.getString(2).orEmpty()
+                    when (rs.getString(1)) {
+                        "VIEW" -> views += name
+                        "GENERATED" -> generated += name to rs.getString(3).orEmpty()
+                        "FUNCTION" -> functions += name
+                    }
+                }
             }
         }
+        return PiiSchemaObjects(views, generated, functions)
+    }
 
     private fun run(sql: String): ExecutionOutcome =
         try {
             dataSource.connection.use { connection ->
                 try {
-                    // 판정기를 아직 못 만들었으면 먼저 읽는다. 읽지 못하면 가릴 수 없으니 실행하지 않는다
-                    val judge =
-                        piiJudge ?: try {
-                            readPiiJudge(connection).also { piiJudge = it }
+                    // 실행마다 같은 연결에서 다시 읽는다. 읽지 못하면 가릴 수 없으니 실행하지 않는다
+                    val objects =
+                        try {
+                            readSchemaObjects(connection)
                         } catch (e: SQLException) {
                             return ExecutionOutcome.Failure(connectionFailed())
                         }
+                    val judge = PiiJudge(PiiLineage(config.piiColumns, objects), PiiColumnMarker(config.piiColumns, objects))
                     query(connection, sql, judge)
                 } finally {
                     connection.rollback()
@@ -282,7 +269,7 @@ class MySqlConnector internal constructor(
         return judge.marker.mark(items, origins)
     }
 
-    /** 실제 개인정보 컬럼으로 만든 해석 트리 판정과 메타데이터 판정 */
+    /** 이번 실행에서 읽은 스키마 객체로 만든 해석 트리 판정과 메타데이터 판정 */
     private class PiiJudge(
         val lineage: PiiLineage,
         val marker: PiiColumnMarker,
@@ -310,12 +297,14 @@ class MySqlConnector internal constructor(
         // 테이블과 뷰 모두
         private const val TABLES_QUERY = "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?"
 
-        // 뷰의 열도 나온다. 뷰 정의의 항목을 열 순서로 맞추니 순서를 지킨다
-        private const val COLUMNS_QUERY =
-            "SELECT TABLE_NAME, COLUMN_NAME, GENERATION_EXPRESSION FROM information_schema.COLUMNS " +
-                "WHERE TABLE_SCHEMA = ? ORDER BY TABLE_NAME, ORDINAL_POSITION"
-
-        private const val VIEWS_QUERY = "SELECT TABLE_NAME, VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = ?"
+        // 뷰는 정의를 볼 권한(SHOW VIEW)이 없어도 보이도록 VIEWS가 아니라 TABLES에서 읽는다
+        private const val SCHEMA_OBJECTS_QUERY =
+            "SELECT 'VIEW', TABLE_NAME, NULL FROM information_schema.TABLES " +
+                "WHERE TABLE_SCHEMA IN (?, DATABASE()) AND TABLE_TYPE = 'VIEW' " +
+                "UNION ALL SELECT 'GENERATED', TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA IN (?, DATABASE()) AND GENERATION_EXPRESSION <> '' " +
+                "UNION ALL SELECT 'FUNCTION', ROUTINE_NAME, NULL FROM information_schema.ROUTINES " +
+                "WHERE ROUTINE_SCHEMA IN (?, DATABASE()) AND ROUTINE_TYPE = 'FUNCTION'"
 
         // 통합 테스트가 커넥터와 같은 세션 설정으로 검사 없이 문장을 보내 볼 때도 쓴다
         fun createPool(config: TargetDbConfig): DataSource =

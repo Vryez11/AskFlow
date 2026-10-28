@@ -24,6 +24,7 @@ import java.util.IdentityHashMap
  * 해석 트리로 최상위 SELECT 항목마다 개인정보 컬럼에서 나온 열인지 추적한다 (design 7장).
  * 별칭으로 테이블까지 풀고, 서브쿼리·CTE는 그 안의 SELECT 항목으로 이어 간다.
  * COUNT 안에서만 쓴 경우만 예외이고, 풀 수 없으면 개인정보로 본다(fail-closed).
+ * 뷰의 모든 열과 생성 컬럼은 개인정보 컬럼으로, 저장 함수나 스키마를 붙인 함수를 부른 항목은 개인정보로 본다.
  *
  * 돌려주는 항목 수는 결과 열 수와 다를 수 있다(`*`, UNION 가지에 `*`가 있을 때, VALUES 같은 문).
  * 결과 열에 맞추지 못하면 모두 가린다.
@@ -31,13 +32,10 @@ import java.util.IdentityHashMap
 class PiiLineage(
     /** "table.column" 형식. 대소문자를 무시하고 비교한다 */
     piiColumns: Collection<String>,
+    private val objects: PiiSchemaObjects = PiiSchemaObjects.NONE,
 ) {
-    /** 테이블 이름 → 개인정보 컬럼 이름. 모두 소문자 */
-    private val piiByTable: Map<String, Set<String>> =
-        piiColumns
-            .map { it.lowercase() }
-            .groupBy({ it.substringBeforeLast('.').substringAfterLast('.') }, { it.substringAfterLast('.') })
-            .mapValues { it.value.toSet() }
+    /** (테이블, 컬럼). 모두 소문자 */
+    private val piiColumns: Set<Pair<String, String>> = piiColumnPairs(piiColumns)
 
     /** [SqlGuard]를 통과한 SQL을 받아, 최상위 SELECT 항목 순서대로 판정을 돌려준다 */
     fun trace(sql: String): List<ItemPii> {
@@ -45,8 +43,8 @@ class PiiLineage(
         return outputs(select, null, emptyMap()).map { output ->
             when (output) {
                 is Output.Named -> if (output.pii) ItemPii.PII else ItemPii.SAFE
-                // 서브쿼리·CTE를 펼친 `*`는 메타데이터의 원래 테이블을 믿을 수 없어 가린다
-                is Output.Star -> if (output.sources.all { it is Source.BaseTable }) ItemPii.STAR else ItemPii.PII
+                // 서브쿼리·CTE·뷰를 펼친 `*`는 메타데이터의 원래 테이블을 믿을 수 없어 가린다
+                is Output.Star -> if (output.sources.all { it is Source.BaseTable && !it.isView }) ItemPii.STAR else ItemPii.PII
                 Output.Opaque -> ItemPii.PII
             }
         }
@@ -75,12 +73,14 @@ class PiiLineage(
         /** [column]이 개인정보면 true, 아니면 false, 이 출처에 없는 이름이면 null */
         fun pii(column: String): Boolean?
 
+        /** 테이블이나 뷰. 뷰면 모든 열이 개인정보다 */
         class BaseTable(
             override val name: String,
-            private val piiColumns: Set<String>,
+            val isView: Boolean,
+            private val isPiiColumn: (String) -> Boolean,
         ) : Source {
             // 테이블의 컬럼 목록은 모르니 어떤 이름이든 있을 수 있다고 본다
-            override fun pii(column: String): Boolean = column.lowercase() in piiColumns
+            override fun pii(column: String): Boolean = isView || isPiiColumn(column)
         }
 
         class Derived(
@@ -185,7 +185,11 @@ class PiiLineage(
                 if (item.schemaName == null && cte != null) {
                     listOf(Source.Derived(sourceName, renamed(cte, aliasColumns(item.alias))))
                 } else {
-                    listOf(Source.BaseTable(sourceName, piiByTable[name.lowercase()].orEmpty()))
+                    listOf(
+                        Source.BaseTable(sourceName, objects.isView(name)) { column ->
+                            (name.lowercase() to column.lowercase()) in piiColumns || objects.isGenerated(name, column)
+                        },
+                    )
                 }
             }
             // LATERAL이 앞의 FROM을 참조해도 그 이름은 바깥 범위에서 못 찾아 가려진다
@@ -260,7 +264,11 @@ class PiiLineage(
                 is Array<*> -> node.forEach(::walk)
                 is Column -> pii = isPiiColumn(node)
                 is AllColumns -> pii = true
-                is Function -> if (!isCount(node)) walkFields(node)
+                is Function ->
+                    when {
+                        isRoutine(node) -> pii = true
+                        !isCount(node) -> walkFields(node)
+                    }
                 is Select -> pii = outputs(node, scope, ctes).any { it !is Output.Named || it.pii }
                 else -> if (isNode(node)) walkFields(node)
             }
@@ -273,6 +281,10 @@ class PiiLineage(
         // COUNT는 개수만 돌려주니 안에 무엇을 넣어도 값이 나가지 않는다. 창 함수 COUNT는 따로 보지 않고 훑는다
         private fun isCount(function: Function): Boolean =
             function.multipartName.size == 1 && unquote(function.name).equals("COUNT", ignoreCase = true)
+
+        // 저장 함수는 인자와 상관없이 어떤 값이든 읽어 돌려줄 수 있다. 스키마를 붙인 함수는 어느 스키마 것인지 따지지 않는다
+        private fun isRoutine(function: Function): Boolean =
+            function.multipartName.size > 1 || objects.isStoredFunction(unquote(function.multipartName.single()))
 
         /**
          * 테이블을 적었으면 바깥 범위까지 그 이름의 출처 모두에서, 안 적었으면 보이는 모든 출처에서 찾는다.
