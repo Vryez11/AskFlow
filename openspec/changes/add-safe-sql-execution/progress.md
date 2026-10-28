@@ -289,3 +289,9 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiColumnResolver.kt`(새 파일), `.../mysql/MySqlConnector.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/PiiColumnResolverTest.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/PiiViewIT.kt`, `pipeline/CLAUDE.md`, `tasks.md`
 - 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
 ---
+
+## 2026-10-28 - 7.1 3차 검토와 뷰 방식 변경 (사람 결정)
+- 3차 검토(551935f 대상): 기본 경우는 막혔으나 막음 4건이 남았다. 이름에 점이 든 뷰 열("table.column" 문자열을 마지막 점에서 자름), 바깥 스키마의 뷰, 저장 함수를 쓰는 뷰, 연결 확인 사이에 바뀐 정의. 제안 1건(문자열 리터럴이 든 생성식은 해석 실패로 늘 가려짐).
+- 사람이 정했다: 뷰 정의를 따라가지 않고, 뷰에서 온 열·생성 컬럼·저장 함수를 부른 열은 모두 개인정보로 본다. 스펙 시나리오(뷰에서 온 열, 뷰의 행 수, 생성 컬럼, 실행 사이에 바뀐 스키마, 저장 함수)와 design 7장을 바꾸고 작업 6.5로 넣었다.
+- 사람이 `PiiViewIT`를 새 스펙에 맞춰 고쳤다(8개 중 5개가 지금 구현에서 실패, 3개 통과). 정의 추적만 보던 `PiiColumnResolverTest`는 지웠다. 6.5는 이 테스트를 바꾸지 않고 통과시켜야 한다.
+---
