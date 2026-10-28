@@ -66,7 +66,7 @@ class ApiApplicationConnectionFailureTests {
     }
 
     companion object {
-        val PASSWORD = "pw-${UUID.randomUUID()}"
+        val PASSWORD = UUID.randomUUID().toString()
 
         @JvmStatic
         @DynamicPropertySource

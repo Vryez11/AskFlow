@@ -22,7 +22,7 @@ object TestMySql {
     const val NUMBERS = 5000
 
     /** 테스트 계정 비밀번호. 버리는 컨테이너에만 쓰지만 비밀 값 검사에 걸리지 않게 코드에 고정 값을 두지 않는다 */
-    fun testPassword(): String = "pw-${UUID.randomUUID()}"
+    fun testPassword(): String = UUID.randomUUID().toString()
 
     /** reader가 접근할 수 없는 다른 스키마 */
     const val FORBIDDEN_SCHEMA = "hr"
