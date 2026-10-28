@@ -14,4 +14,5 @@
 - 읽기 전용은 DB 세션(`connectionInitSql`의 `transaction_read_only = ON`)에 건다. 풀의 JDBC `readOnly`를 켜거나 Connector/J `readOnlyPropagatesToServer`를 켜면 반납 때 `SET SESSION TRANSACTION READ WRITE`가 나가 세션이 쓰기 가능해진다(`ReadOnlySessionIT`가 막는다).
 - MySQL 8.4는 조건 없는 교차 조인의 `COUNT(*)`를 행 수 곱으로 바로 계산한다. 느린 쿼리가 필요하면 행을 실제로 훑게 만들어야 한다.
 - Connector/J 메타데이터의 `getColumnLabel`은 별칭, `getTableName`·`getColumnName`은 원래 테이블·컬럼이다. 계산한 열은 둘 다 빈 문자열이다. 결과 열의 개인정보 표시는 `mysql/PiiColumnMarker`가 `PiiLineage` 판정과 이 메타데이터를 합쳐 정한다.
+- HikariCP는 연결을 못 얻으면 안쪽 예외를 원인으로 감싼 `SQLTransientConnectionException`을 던지고 안쪽 SQLState를 그대로 옮긴다. 예외를 분류할 때는 바깥 종류가 아니라 원인 사슬의 오류 코드부터 본다(`mysql/ConnectionFailureClassifier`).
 - 분석 대상 DB 코드는 `io.askflow.pipeline.datasource`(공개 타입), `.guard`(SQL 검사), `.mysql`(구현체)에 둔다.

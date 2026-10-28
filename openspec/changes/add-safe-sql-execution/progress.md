@@ -10,7 +10,7 @@
 - `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 풀 생성은 companion의 `createPool`. `checkConnection()`은 아직 `TODO()`(3.5).
 - `SqlGuardTest`는 잠금·파일 쓰기 SELECT(`LOCK IN SHARE MODE`, `INTO OUTFILE`/`DUMPFILE`/`@변수`)를 `NOT_SELECT`로 기대하지만 JSqlParser 5.3은 이것들을 해석하지 못한다. 2.1에서 해석 전 원문 검사(문자열 리터럴 밖 토큰)로 `NOT_SELECT`를 돌려줘야 한다. `FOR UPDATE`/`FOR SHARE`는 해석된다.
 - `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다.
-- 권한 해석은 `GrantParser(schema).parse(lines): GrantCheck(writePrivileges, warnings)`, 연결 실패 분류는 `ConnectionFailureClassifier(password).classify(error): ConnectionFailure`. 둘 다 `mysql` 패키지의 internal이다. 분류기는 HikariCP가 감싼 예외(`SQLTransientConnectionException`)의 원인 사슬을 따라가야 하고, 원인 없는 풀 대기 시간 초과는 접속 불가로 본다.
+- 권한 해석은 `GrantParser(schema).parse(lines): GrantCheck(writePrivileges, warnings)`, 연결 실패 분류는 `ConnectionFailureClassifier(password).classify(error): ConnectionFailure`. 둘 다 `mysql` 패키지의 internal이고 3.4에서 구현됐다. 분류기는 HikariCP가 감싼 예외(`SQLTransientConnectionException`)의 원인 사슬을 따라가야 하고, 원인 없는 풀 대기 시간 초과는 접속 불가로 본다.
 - 버전: JSqlParser 5.3, HikariCP 7.0.2, Connector/J 9.7.0, Testcontainers 2.0.5(아티팩트 이름 `testcontainers-mysql`, `testcontainers-junit-jupiter`).
 - 통합 테스트는 `TestMySql`(mysql:8.4, 스키마 `olist`, 테이블 orders 6행·customers 4행·numbers 1..5000, 뷰 `delivered_orders`, 계정 `askflow_reader`(SELECT, SHOW VIEW)·`askflow_writer`(SELECT, INSERT, UPDATE, DELETE)·`askflow_admin`(ALL ON `*.*`), reader가 못 들어가는 스키마 `hr`)를 쓴다.
 - `ConnectionCheckIT`가 정한 것(3.5에서 맞춘다): 허용 테이블 비움이면 테이블 수에 뷰도 센다(4). 스키마 없음(1049)과 접근 못 하는 스키마(1044) 모두 `SCHEMA_UNAVAILABLE`. 없는 허용 테이블은 `message`에 없는 이름만 담는다. DB에 닿지 않음은 10초 안에 끝나야 한다. 실패 상태의 `toString()`에 비밀번호가 없어야 한다. "나중에 살아난 DB"는 같은 커넥터로 두 번 `checkConnection()`을 부른다(`initializationFailTimeout = -1` 필요). 이 로컬 환경에서는 Docker가 돌아 `:pipeline:integrationTest`가 실제로 컨테이너를 띄운다.
@@ -165,4 +165,13 @@
 - 새 `PiiColumnMarkerTest`(5개) 통과. `MySqlConnectorIT` 19개 모두 통과. `:pipeline:test`의 남은 실패는 `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4)뿐이다. `ktlintCheck`, 모든 컴파일 통과.
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`, `.../mysql/PiiColumnMarker.kt`(새 파일), `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/mysql/PiiColumnMarkerTest.kt`(새 파일), `pipeline/CLAUDE.md`, `tasks.md`
 - 다음 반복(3.4): `GrantParser`와 `ConnectionFailureClassifier`. "알아 둘 패턴"의 HikariCP 원인 사슬 주의와 1.4 기록의 `08004` 메모를 본다.
+---
+
+## 2026-10-28 - 3.4 GrantParser와 연결 실패 원인 분류
+- `GrantParser.parse`: 따옴표 안을 가린 뒤 `GRANT <권한> ON <범위> TO`(권한 줄)와 `GRANT <역할> TO`(역할 줄, 경고 하나에 역할 이름)를 나눈다. 범위가 `*.*`이거나 DB 이름 패턴(`%`·`_`·`\` 이스케이프를 MySQL처럼 해석)이 설정 스키마에 걸리면 본다. 계정 범위(PROXY)는 무시, 해석 못 한 줄과 빈 결과는 경고. 컬럼 목록은 버리고 {SELECT, SHOW VIEW, USAGE} 밖은 순서대로 중복 없이 모은다.
+- `ConnectionFailureClassifier.classify`: 원인 사슬(순환 방지)에서 1045 → 인증, 1049·1044 → 스키마, SQLState `08*`나 소켓 예외, 원인 없는 HikariCP 대기 시간 초과 → 접속 불가, 그 밖 → `UNKNOWN`(확인할 설정은 url·username). `message`는 한국어 요약 + 가장 안쪽 SQL 예외 메시지(비밀번호는 `****`).
+- 새 `GrantParserEdgeTest`(3개): 와일드카드 스키마, PROXY 줄, 루틴 권한과 따옴표 안의 ON·TO.
+- `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7 통과. `:pipeline:test` 전체 통과. `ktlintCheck`, 모든 컴파일 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/GrantParser.kt`, `.../mysql/ConnectionFailureClassifier.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/mysql/GrantParserEdgeTest.kt`(새 파일), `pipeline/CLAUDE.md`, `tasks.md`
+- 다음 반복(3.5): `checkConnection()`. 실패는 `ConnectionFailureClassifier(config.password)`로 나누고, 권한은 `SHOW GRANTS FOR CURRENT_USER()` 줄을 `GrantParser(config.schema)`에 넣는다. 없는 허용 테이블(`TABLE_NOT_FOUND`, `askflow.target-db.allowed-tables`)은 분류기 밖에서 만든다. 빈 허용 목록이면 읽은 스키마 테이블로 `SqlGuard`를 바꿔야 한다("알아 둘 패턴"의 `ConnectionCheckIT` 항목).
 ---
