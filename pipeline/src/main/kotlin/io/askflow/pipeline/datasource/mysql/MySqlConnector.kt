@@ -186,6 +186,8 @@ class MySqlConnector internal constructor(
             message = "DB가 SQL을 실행하지 못했습니다.",
             cause = withoutSecret(error.message ?: "오류 코드 ${error.errorCode}"),
             checkPoints = listOf("실행하려던 SQL"),
+            dbErrorCode = error.errorCode,
+            sqlState = error.sqlState,
         )
 
     private fun withoutSecret(text: String): String = if (config.password.isEmpty()) text else text.replace(config.password, "****")

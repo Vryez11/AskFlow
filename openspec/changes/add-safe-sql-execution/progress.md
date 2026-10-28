@@ -9,7 +9,7 @@
 - UNION 끝 LIMIT의 JSqlParser 함정은 `pipeline/CLAUDE.md`에 있다. LIMIT 다시 쓰기는 `SqlGuard.capLimit()`가 이를 처리한다.
 - `MySqlConnector(config)`(공개)와 `MySqlConnector(config, dataSource)`(internal, 테스트용)가 있다. 풀 생성은 companion의 `createPool`. `checkConnection()`은 3.5에서 구현됐다. 허용 테이블을 비우면 `execute`는 첫 연결 확인 전까지 DB에 보내지 않고 `CONNECTION_FAILED`를 돌려준다(api가 시작할 때나 상태 조회 전에 `execute`를 부르면 이렇게 된다).
 - `SqlGuardTest`는 잠금·파일 쓰기 SELECT(`LOCK IN SHARE MODE`, `INTO OUTFILE`/`DUMPFILE`/`@변수`)를 `NOT_SELECT`로 기대하지만 JSqlParser 5.3은 이것들을 해석하지 못한다. 2.1에서 해석 전 원문 검사(문자열 리터럴 밖 토큰)로 `NOT_SELECT`를 돌려줘야 한다. `FOR UPDATE`/`FOR SHARE`는 해석된다.
-- `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다.
+- `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다. 오류도 같아서 `LlmSafeError`는 `ExecutionError.forLlm()`으로만 만든다(6.3).
 - 권한 해석은 `GrantParser(schema).parse(lines): GrantCheck(writePrivileges, warnings)`, 연결 실패 분류는 `ConnectionFailureClassifier(password).classify(error): ConnectionFailure`. 둘 다 `mysql` 패키지의 internal이고 3.4에서 구현됐다. 분류기는 HikariCP가 감싼 예외(`SQLTransientConnectionException`)의 원인 사슬을 따라가야 하고, 원인 없는 풀 대기 시간 초과는 접속 불가로 본다.
 - 버전: JSqlParser 5.3, HikariCP 7.0.2, Connector/J 9.7.0, Testcontainers 2.0.5(아티팩트 이름 `testcontainers-mysql`, `testcontainers-junit-jupiter`).
 - 통합 테스트는 `TestMySql`(mysql:8.4, 스키마 `olist`, 테이블 orders 6행·customers 4행·numbers 1..5000, 뷰 `delivered_orders`, 계정 `askflow_reader`(SELECT, SHOW VIEW)·`askflow_writer`(SELECT, INSERT, UPDATE, DELETE)·`askflow_admin`(ALL ON `*.*`), reader가 못 들어가는 스키마 `hr`)를 쓴다.
@@ -264,4 +264,13 @@
 - 확인: `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest`, `./gradlew ktlintCheck build` 통과.
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiLineage.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/PiiLineageShadowTest.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/PiiShadowAliasIT.kt`, `tasks.md`
 - 다음 반복: 6.3(LLM에 보낼 실행 오류). 단위 테스트와 통합 테스트 모두 새 파일에 더한다.
+---
+
+## 2026-10-28 - 6.3 LLM에 보낼 실행 오류
+- `ExecutionError`에 `dbErrorCode`, `sqlState`(기본 `null`)를 더하고 `forLlm(): LlmSafeError`를 만들었다. `LlmSafeError`(생성자 internal)는 종류·메시지·원인·오류 코드·SQLState를 갖고, DB 오류면 원인을 `null`로 버린다. `toString()`은 LLM 프롬프트용 한 줄("DB 오류: … (오류 코드 1772, SQLState HY000)").
+- `MySqlConnector.dbError`가 가장 안쪽 `SQLException`의 오류 코드와 SQLState를 담는다.
+- 새 테스트: 단위 `LlmSafeErrorTest`(3개: 값을 담은 DB 오류, 화면용 오류는 그대로, 검사에 걸린 오류), 통합 `LlmSafeErrorIT`(`GTID_SUBSET(customer_zip_code_prefix, '')`의 화면용 원인에는 `01001`이 있고 `forLlm()`에는 없음). 단위 3개는 `TODO()` 골격에서 실패를 확인한 뒤 구현했다. 통합 테스트는 같은 실행에서 단위 실패로 돌지 않아 구현 전 실패는 따로 보지 못했다.
+- 확인: `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest`, `./gradlew ktlintCheck build` 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/ExecutionError.kt`, `.../mysql/MySqlConnector.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/LlmSafeErrorTest.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/LlmSafeErrorIT.kt`, `pipeline/CLAUDE.md`, `tasks.md`
+- 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
 ---
