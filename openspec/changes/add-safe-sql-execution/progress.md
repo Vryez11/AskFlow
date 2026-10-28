@@ -19,6 +19,8 @@
 - 4.1이 할 일: `@Validated` + `maxRows`에 `@field:Positive`, `queryTimeout`에 `@field:DurationMin(millis = 1)`, `toConfig()`, `application.yml`에 design 2장 블록(`url: jdbc:mysql://localhost:${MYSQL_PORT:3306}/olist`, `password: ${ASKFLOW_READER_PASSWORD:}`). 1.7에서 이렇게 임시로 구현해 잘못된 상한 값 4개와 컨트롤러 6개가 통과하는 것을 확인하고 되돌렸다. `TargetDbPropertiesTest`의 나머지 3개와 앱 전체 테스트는 `MySqlConnector.createPool`(3.1)이 있어야 통과한다.
 - 커밋된 `ApiApplicationTests`는 Ralph 훅이 고치지 못하게 막는다. 연결 실패 시작 시나리오는 새 `ApiApplicationConnectionFailureTests`에 뒀다. `ApiApplicationTests.contextLoads`는 4.1까지 실패한다.
 - web 모듈 규칙은 `web/CLAUDE.md`에 있다. `ConnectionStatus.test.tsx`가 정한 것(5.1에서 맞춘다): 컴포넌트는 기본 내보내기 `ConnectionStatus`(props 없음)이고 스스로 `fetch('/api/connection/status', <옵션>)`를 부른다(두 번째 인자가 있어야 한다). 화면 글은 `textContent` 정규식으로 본다: "연결됨", "테이블 9개", "용어 0개", "쓰기 권한"(권한이 없으면 이 글이 없어야 한다), "연결 실패", 원인 `message`, `checkKeys`, 실패 시 "연결 상태를 불러오지 못했"(네트워크 오류와 502 둘 다). 마지막 시나리오는 `<App />`을 그려 보므로 `App`에 컴포넌트를 넣어야 통과한다.
+- 테이블·함수 검사는 `guard/ReferenceCollector.collect(statement)`(리플렉션으로 트리 전체를 훑음)가 모은 것을 `SqlGuard`가 비교한다. 개인정보 추적(2.4)처럼 트리를 훑는 일에서 JSqlParser visitor만 믿으면 노드를 놓친다(`pipeline/CLAUDE.md`).
+- `MySqlConnector`는 `config.allowedTables`로 `SqlGuard`를 만들고 `execute`의 검사 통과 뒤는 `TODO()`다(3.1). 빈 허용 목록 처리는 3.5.
 - 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. `createPool`은 `readOnly`·`autoCommit = false`·`connectionInitSql`을 모두 걸어야 한다.
 
 ---
@@ -94,4 +96,15 @@
 - `SqlGuardTest` 22개 중 15개 통과. 남은 7개는 테이블·함수 검사와 `MySqlConnector.execute`(2.2)다. `LimitRewriteTest`는 이제 `NotImplementedError`가 아니라 단언 실패(2.3).
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/SqlGuard.kt`, `.../guard/RawSqlScanner.kt`(새 파일), `pipeline/CLAUDE.md`
 - 다음 반복(2.2): `SqlGuardTest`의 "DB에 닿지 않음"은 `MySqlConnector.execute`가 검사에서 걸리면 DB를 건드리지 않고 `Failure`를 돌려주게 해야 통과한다. 커넥터 쪽 `SqlGuard`의 허용 테이블은 `config.allowedTables`(빈 목록 처리는 3.5). 실행 부분은 3.1이니 검사 통과 뒤는 아직 `TODO()`로 둬도 된다.
+---
+
+## 2026-10-28 - 2.2 테이블 visitor와 거부 함수 검사
+- 새 `guard/ReferenceCollector`(internal): 해석 트리의 JSqlParser 노드 필드를 리플렉션으로 모두 따라가 `Table`과 `Function`을 모은다. `TablesNamesFinder`는 `>` 비교식 안 서브쿼리 등을 건너뛰어 쓰지 않았다. `Column`·`AllTableColumns`의 `table`(별칭일 수 있음)은 테이블로 보지 않는다. SELECT 안의 SELECT가 아닌 문(CTE 본문의 DML)은 `NOT_SELECT`.
+- CTE 범위: MySQL처럼 CTE 본문은 앞에 정의한 CTE만, RECURSIVE면 자기 자신도 본다. 바깥 쿼리는 그 WITH의 이름을 모두 본다. 스키마를 적은 이름은 CTE가 아니다. CTE 이름 비교는 대소문자를 가린다(어긋나면 테이블로 검사돼 거부 쪽).
+- `SqlGuard`: 테이블(세 부분 이름 거부, 스키마는 설정 스키마와 대소문자 무시 비교, 이름은 허용 목록과 대소문자 무시) → 거부 함수(마지막 이름 부분을 대문자로) 순서. `cause`는 쓴 그대로의 테이블 이름, 함수 이름.
+- `MySqlConnector.execute`: 검사에 걸리면 `Failure`, 통과 뒤는 `TODO()`(3.1).
+- 새 `SqlGuardBypassTest`(6개)로 비교식·정렬·HAVING·함수 인자·CASE 안 서브쿼리, CTE 그림자(비재귀 본문, 뒤 CTE, 서브쿼리 범위, 스키마 접두어), 재귀 CTE, 별칭 컬럼, 세 부분 이름, 정렬·조인 조건 안 함수를 확인했다.
+- `SqlGuardTest` 22개 모두 통과. `:pipeline:test`의 남은 실패는 `LimitRewriteTest` 6(2.3), `PiiLineageTest` 14(2.4), `GrantParserTest` 11·`ConnectionFailureClassifierTest` 7(3.4)뿐이다. `ktlintCheck`, 모든 컴파일 통과.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/ReferenceCollector.kt`(새 파일), `.../guard/SqlGuard.kt`, `.../mysql/MySqlConnector.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/SqlGuardBypassTest.kt`(새 파일), `pipeline/CLAUDE.md`
+- 다음 반복(2.3): `SqlGuard.check()` 끝의 `GuardResult.Passed(statement.toString())` 앞에 LIMIT 다시 쓰기를 넣는다. UNION 끝 LIMIT 함정(`pipeline/CLAUDE.md`)을 본다.
 ---
