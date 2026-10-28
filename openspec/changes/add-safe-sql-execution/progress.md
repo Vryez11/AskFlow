@@ -310,3 +310,15 @@
 - 4차 검토(210fea7 대상): 6.5의 범위는 막혔고 6.1~6.3 회귀는 없다. 막음 3건: 해석 트리가 처음 보는 노드(사용자 변수, LAST_INSERT_ID)를 안전으로 봄, 이름 비교가 MySQL의 식별자 비교(대소문자·악센트 무시)와 달라 저장 함수·생성 컬럼 판정을 비껴감, 대소문자만 다른 스키마가 검사와 목록 조회에서 어긋남. 제안 2건: 목록을 읽지 못할 때 실행하지 않는 경로의 테스트, `DEFAULT (식)` 컬럼.
 - 사람이 정했다: 판정을 뒤집어 안전이 확인된 열만 LLM에 보낸다. 사용자 변수와 LAST_INSERT_ID는 검사기에서 거부하고, 스키마는 정확히 같은 이름만 허용한다. 스펙(새 시나리오 6개), design 7장 "판정 방향", 작업 6.6에 넣었다.
 ---
+
+## 2026-10-28 - 6.6 안전이 확인된 열만 보내도록 판정을 뒤집음
+- 새 `guard/BuiltinAllowList`: 내장 함수 허용 목록(날짜·문자열·숫자·조건, COUNT·SUM·AVG 같은 값을 숨기는 집계, 순위 창 함수. MIN·MAX·GROUP_CONCAT·LAG는 뺌), 리터럴 노드, 재료를 섞기만 하는 노드(이항 연산, CASE, CAST, EXTRACT, INTERVAL, 창 정의 등). `PiiLineage`의 식 훑기는 이 목록에 없는 함수·노드를 만나면 개인정보로 본다. `OVER w`는 `WINDOW` 절 정의까지 훑고, 창 함수 COUNT는 센 재료만 건너뛴다. `TIMESTAMPDIFF`/`TIMESTAMPADD`의 단위 인자(컬럼으로 해석됨)는 건너뛴다.
+- `PiiSchemaObjects`에 `columns`(기본 null = 확인 안 함, 기존 단위 테스트 사용법 유지)를 더했다. 기본 테이블 출처는 목록에 없는 컬럼이면 "이 출처에 없음"(null)이라 다른 출처도 못 찾으면 개인정보. `PiiColumnMarker`도 메타데이터가 목록에 없으면 가린다. `MySqlConnector`의 실행마다 조회에 `'COLUMN'` 가지(스키마 전체 컬럼)를 더했다.
+- `SqlGuard`: 스키마는 `==`로 비교, `LAST_INSERT_ID`를 거부 함수에, `ReferenceCollector`가 모은 사용자 변수(`@x`, `@@x`는 뺌)를 "허용하지 않은 함수"(원인 "사용자 변수 @x")로 거부.
+- 새 테스트: `SqlGuardSessionTest`(3), `PiiLineageAllowListTest`(5), `PiiColumnMarkerColumnsTest`(1), `SchemaListFailureTest`(1, 목록 조회가 SQL 예외면 사용자 SQL을 보내지 않고 `CONNECTION_FAILED`), `PiiAllowListIT`(3). 구현 전 단위 8개가 실패한 것을 확인했다(허용 목록 안의 함수와 목록 조회 실패는 이미 통과하던 경로).
+- README에 `DEFAULT (식)` 컬럼은 `pii-columns`에 적어야 한다고 적었다.
+- 확인: `./gradlew ktlintCheck :pipeline:test :pipeline:integrationTest`, `./gradlew ktlintCheck build`, `openspec validate --all --strict` 통과.
+- 알아 둘 것: 로컬 MySQL 8.4(Testcontainers)는 악센트만 다른 컬럼 이름(`ordér_status`)을 찾지 못하고 1054를 낸다. design 7장 "MySQL은 악센트까지 무시해 찾는다"는 적어도 컬럼 이름에서는 맞지 않았다(판정 규칙에는 영향 없음). 7.1 재검토에서 확인할 만하다.
+- 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/BuiltinAllowList.kt`(새 파일), `.../guard/PiiLineage.kt`, `.../guard/PiiSchemaObjects.kt`, `.../guard/ReferenceCollector.kt`, `.../guard/SqlGuard.kt`, `.../mysql/MySqlConnector.kt`, `.../mysql/PiiColumnMarker.kt`, 위 테스트 파일들, `README.md`, `pipeline/CLAUDE.md`, `tasks.md`
+- 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
+---
