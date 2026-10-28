@@ -183,3 +183,11 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/EmptyAllowListIT.kt`(새 파일), `tasks.md`
 - 다음 반복(4.1): "알아 둘 패턴"의 4.1 항목대로 `TargetDbProperties` 검증과 `application.yml`을 넣는다. `ApiApplicationTests`·`TargetDbPropertiesTest`가 기대하는 풀 생성(`createPool`)은 이제 있다.
 ---
+
+## 2026-10-28 - 4.1 설정 바인딩·검증과 커넥터 빈, application.yml 기본값
+- `TargetDbProperties`: `@Validated`, `maxRows`에 `@field:Positive`, `queryTimeout`에 `@field:DurationMin(millis = 1)`, `toConfig()`. `toString()`은 `TargetDbConfig`의 가린 문자열을 써서 비밀번호를 찍지 않는다. 빈 등록(`TargetDbConfiguration`)은 1.7 골격 그대로다.
+- `application.yml`에 design 2장 `askflow.target-db` 블록을 넣었다.
+- 확인: `TargetDbPropertiesTest` 7, `ApiApplicationTests`, `ApiApplicationConnectionFailureTests`의 설정 기본값 2개 통과. `:api:test` 남은 실패 8개는 모두 컨트롤러 `NotImplementedError`(4.2). `ktlintCheck`, `:pipeline:test` 통과.
+- 바꾼 파일: `api/src/main/kotlin/io/askflow/api/connection/TargetDbProperties.kt`, `api/src/main/resources/application.yml`, `tasks.md`
+- 다음 반복(4.2): `ConnectionStatusController`와 `ConnectionStatusResponse`만 채우면 된다. 조회마다 `checkConnection()`을 부른다.
+---
