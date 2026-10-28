@@ -305,3 +305,8 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/PiiSchemaObjects.kt`(새 파일), `.../guard/PiiLineage.kt`, `.../guard/PiiColumnResolver.kt`(지움), `.../mysql/PiiColumnMarker.kt`, `.../mysql/MySqlConnector.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/guard/PiiSchemaObjectsTest.kt`, `.../mysql/PiiColumnMarkerObjectsTest.kt`, `pipeline/CLAUDE.md`, `tasks.md`
 - 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
 ---
+
+## 2026-10-28 - 7.1 4차 검토와 판정 방향 변경 (사람 결정)
+- 4차 검토(210fea7 대상): 6.5의 범위는 막혔고 6.1~6.3 회귀는 없다. 막음 3건: 해석 트리가 처음 보는 노드(사용자 변수, LAST_INSERT_ID)를 안전으로 봄, 이름 비교가 MySQL의 식별자 비교(대소문자·악센트 무시)와 달라 저장 함수·생성 컬럼 판정을 비껴감, 대소문자만 다른 스키마가 검사와 목록 조회에서 어긋남. 제안 2건: 목록을 읽지 못할 때 실행하지 않는 경로의 테스트, `DEFAULT (식)` 컬럼.
+- 사람이 정했다: 판정을 뒤집어 안전이 확인된 열만 LLM에 보낸다. 사용자 변수와 LAST_INSERT_ID는 검사기에서 거부하고, 스키마는 정확히 같은 이름만 허용한다. 스펙(새 시나리오 6개), design 7장 "판정 방향", 작업 6.6에 넣었다.
+---
