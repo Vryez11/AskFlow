@@ -39,10 +39,17 @@
 - [x] 5.1 상태 조회 함수와 `ConnectionStatus` 컴포넌트를 만들어 `App`에 넣고, Vite 개발 서버에 `/api` 프록시를 둔다. 확인: `npm --prefix web run lint`, `typecheck`, `test` 통과
 - [x] 5.2 api와 web을 함께 띄워 홈에서 연결됨과 테이블 수가 보이는지, `.env` 없이(비밀번호 틀림) 띄우면 연결 실패와 확인할 설정이 보이는지 확인하고 `progress.md`에 결과를 적는다. 확인: 두 상태 모두 화면에서 확인
 
-## 6. 검토와 change 완료 조건
+## 6. 검토 지적 고치기 (7.1 독립 검토의 막음)
 
-- [ ] 6.1 구현에 참여하지 않은 리뷰어(`/code-review` 또는 리뷰 서브에이전트)로 하네스 3-3 검토를 한다. 특히 3번(SELECT만 실행, 행 수·시간 상한, 개인정보 컬럼 가리기를 피해 가는 경로 없음)을 본다. 막는 지적은 이 파일에 작업으로 추가한다. 확인: 막는 지적 0건
-- [ ] 6.2 `conventions/harness.md` 4장의 change 완료 조건을 확인한다. 평가 세트는 아직 없어 해당 없음을 PR 설명에 적는다. 요구사항이 바뀌었으면 PRD F-003(특히 8장 "남은 것"의 상한 기본값과 쓰기 권한 확인 방법)을 고친다. 확인: `./gradlew ktlintCheck build`, `npm --prefix web run lint && npm --prefix web run typecheck && npm --prefix web run test`, `openspec validate --all --strict --no-interactive` 모두 통과
+먼저 실패하는 테스트를 더하고 고친다. 이미 커밋된 테스트는 바꾸지 않는다.
+
+- [ ] 6.1 옵티마이저 힌트·실행 주석 검사가 보통 주석(`--`, `#`, `/* */`) 안의 따옴표에 속는 문제를 고친다. 지금 `RawSqlScanner.findExecutableComment`는 따옴표만 건너뛰고 주석은 건너뛰지 않아, 주석 안의 따옴표 하나가 뒤의 `/*+ ... */` 힌트를 문자열로 착각하게 만든다. JSqlParser는 SELECT 뒤의 힌트를 다시 쓴 SQL에 남기므로 `MAX_EXECUTION_TIME` 힌트가 DB에 닿는다. 스캐너가 주석과 리터럴을 같은 규칙(`codeOnly`)으로 다루게 하고, 다시 쓴 트리에 힌트가 남아 있으면 거부한다(두 겹). 확인: `SqlGuardTest`에 보통 주석 안 따옴표 뒤의 힌트·실행 주석이 거부되는 테스트를 더하고 통과, `./gradlew :pipeline:test` 통과
+- [ ] 6.2 개인정보 열 추적이 서브쿼리의 같은 별칭에 속는 문제를 고친다. 지금 `PiiLineage`는 테이블을 적은 컬럼을 가장 안쪽의 같은 이름 출처에서만 찾고, 기본 테이블은 어떤 컬럼이든 가진다고 본다. MySQL은 안쪽 테이블에 없는 컬럼을 바깥 범위의 같은 별칭에서 찾으므로(로컬 MySQL 8.4에서 확인), 바깥 개인정보 테이블과 같은 별칭을 안쪽 서브쿼리에 쓰면 개인정보 열이 `SAFE`가 된다. 테이블을 적은 컬럼도 바깥 범위까지 같은 이름 출처를 모두 보고, 하나라도 개인정보면 가린다. 확인: `PiiLineageTest`에 이 경우를 더하고 통과, `MySqlConnectorIT`에 같은 SQL의 `forLlm()` 결과에서 그 열이 빠지는 테스트를 더하고 `./gradlew :pipeline:integrationTest` 통과
+
+## 7. 검토와 change 완료 조건
+
+- [ ] 7.1 구현에 참여하지 않은 리뷰어(`/code-review` 또는 리뷰 서브에이전트)로 하네스 3-3 검토를 한다. 특히 3번(SELECT만 실행, 행 수·시간 상한, 개인정보 컬럼 가리기를 피해 가는 경로 없음)을 본다. 막는 지적은 이 파일에 작업으로 추가한다. 확인: 막는 지적 0건
+- [ ] 7.2 `conventions/harness.md` 4장의 change 완료 조건을 확인한다. 평가 세트는 아직 없어 해당 없음을 PR 설명에 적는다. 요구사항이 바뀌었으면 PRD F-003(특히 8장 "남은 것"의 상한 기본값과 쓰기 권한 확인 방법)을 고친다. 확인: `./gradlew ktlintCheck build`, `npm --prefix web run lint && npm --prefix web run typecheck && npm --prefix web run test`, `openspec validate --all --strict --no-interactive` 모두 통과
 
 ## Workflow follow-up
 
