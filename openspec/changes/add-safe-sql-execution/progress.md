@@ -322,3 +322,9 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/guard/BuiltinAllowList.kt`(새 파일), `.../guard/PiiLineage.kt`, `.../guard/PiiSchemaObjects.kt`, `.../guard/ReferenceCollector.kt`, `.../guard/SqlGuard.kt`, `.../mysql/MySqlConnector.kt`, `.../mysql/PiiColumnMarker.kt`, 위 테스트 파일들, `README.md`, `pipeline/CLAUDE.md`, `tasks.md`
 - 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
 ---
+
+## 2026-10-28 - 7.1 5차 검토 (62fcfbe 대상)
+- 기본값은 대체로 "확인 전에는 가림"이 됐고 6.1~6.5 회귀는 없다(강제 재실행으로 단위 113, 통합 46 통과). 허용 목록에 값을 돌려주는 집계·창 함수는 없다.
+- 막음 3건(원칙 안에서 고침 → 작업 6.7): LATERAL 안의 이름을 앞쪽 형제 출처 없이 찾아 엉뚱한 출처로 확인함, 대소문자만 다른 CTE 이름을 서버 설정에 따라 다르게 봄, 실행 경로가 컬럼 목록을 넘기는지 지키는 테스트가 없음(넘기지 않게 바꿔도 모든 테스트 통과).
+- 제안 3건: 테이블 이름 대소문자 비교(6.7의 같은 규칙으로 묶음), 검사기 거부의 CTE·서브쿼리 테스트(6.7에 넣음), design의 악센트 근거 문장이 관찰과 다름(design을 고침).
+---
