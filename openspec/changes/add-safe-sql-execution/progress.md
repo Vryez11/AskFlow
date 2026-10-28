@@ -15,6 +15,9 @@
 - 통합 테스트는 `TestMySql`(mysql:8.4, 스키마 `olist`, 테이블 orders 6행·customers 4행·numbers 1..5000, 뷰 `delivered_orders`, 계정 `askflow_reader`(SELECT, SHOW VIEW)·`askflow_writer`(SELECT, INSERT, UPDATE, DELETE)·`askflow_admin`(ALL ON `*.*`), reader가 못 들어가는 스키마 `hr`)를 쓴다.
 - `ConnectionCheckIT`가 정한 것(3.5에서 맞춘다): 허용 테이블 비움이면 테이블 수에 뷰도 센다(4). 스키마 없음(1049)과 접근 못 하는 스키마(1044) 모두 `SCHEMA_UNAVAILABLE`. 없는 허용 테이블은 `message`에 없는 이름만 담는다. DB에 닿지 않음은 10초 안에 끝나야 한다. 실패 상태의 `toString()`에 비밀번호가 없어야 한다. "나중에 살아난 DB"는 같은 커넥터로 두 번 `checkConnection()`을 부른다(`initializationFailTimeout = -1` 필요). 이 로컬 환경에서는 Docker가 돌아 `:pipeline:integrationTest`가 실제로 컨테이너를 띄운다.
 - `MySqlConnectorIT`가 정한 오류 형식(3장에서 맞춘다): 시간 상한 `cause`에 `"1초"`, `checkPoints`에 `askflow.target-db.query-timeout`. 행 수 상한 `cause`에 상한 숫자(`"1000"`, 쉼표 없음), `checkPoints`에 `askflow.target-db.max-rows`. 연결 실패 `checkPoints` 중 하나에 `"연결 상태"`. DB 오류 `cause`에 MySQL 메시지 원문.
+- api 모듈 규칙은 `api/CLAUDE.md`에 있다. api 코드는 `io.askflow.api.connection`: `TargetDbProperties.toConfig()`, `TargetDbConfiguration`(빈 `TargetDbConfig`, `DataSourceConnector`), `TermCountProvider`/`ZeroTermCountProvider`, `ConnectionStatusController`와 `ConnectionStatusResponse`(`failure.reason`은 enum 이름 문자열, 예: `"AUTHENTICATION"`). 본문은 `TODO()`다.
+- 4.1이 할 일: `@Validated` + `maxRows`에 `@field:Positive`, `queryTimeout`에 `@field:DurationMin(millis = 1)`, `toConfig()`, `application.yml`에 design 2장 블록(`url: jdbc:mysql://localhost:${MYSQL_PORT:3306}/olist`, `password: ${ASKFLOW_READER_PASSWORD:}`). 1.7에서 이렇게 임시로 구현해 잘못된 상한 값 4개와 컨트롤러 6개가 통과하는 것을 확인하고 되돌렸다. `TargetDbPropertiesTest`의 나머지 3개와 앱 전체 테스트는 `MySqlConnector.createPool`(3.1)이 있어야 통과한다.
+- 커밋된 `ApiApplicationTests`는 Ralph 훅이 고치지 못하게 막는다. 연결 실패 시작 시나리오는 새 `ApiApplicationConnectionFailureTests`에 뒀다. `ApiApplicationTests.contextLoads`는 4.1까지 실패한다.
 - 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. `createPool`은 `readOnly`·`autoCommit = false`·`connectionInitSql`을 모두 걸어야 한다.
 
 ---
@@ -64,4 +67,13 @@
 - 11개 모두 `NotImplementedError`로 실패하는 것을 확인했다. `:pipeline:test`, `MySqlConnectorIT`도 `NotImplementedError`만 있다.
 - 바꾼 파일: `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/ConnectionCheckIT.kt`, `.../mysql/TcpForwarder.kt`(새 파일), `.../mysql/TestMySql.kt`, `pipeline/CLAUDE.md`
 - 다음 반복(1.7): api 테스트. `api`에는 아직 actuator뿐이다. `TargetDbProperties`, `ConnectionStatusController`, `TermCountProvider`의 골격을 `TODO()`로 같이 만들어야 컴파일된다.
+---
+
+## 2026-10-28 - 1.7 api 시나리오를 테스트로 옮김
+- `TargetDbPropertiesTest`(7개): 설정 값이 `TargetDbConfig`로 옮겨짐, 상한 기본값 1000행·10초, 허용 테이블 비움, `max-rows`·`query-timeout`이 0·음수면 시작 실패와 kebab 설정 키. `ApplicationContextRunner`로 `TargetDbConfiguration`만 띄운다.
+- `ConnectionStatusControllerTest`(6개, `@WebMvcTest` + 가짜 커넥터 + 실제 `ZeroTermCountProvider`): 정상 상태(테이블 9), 용어 수 0, 쓰기 권한 이름, 실패 원인과 확인할 설정 키, 조회마다 다시 확인, 응답 필드는 정한 것만이고 password 없음.
+- `ApiApplicationConnectionFailureTests`(4개, `@SpringBootTest` + `MYSQL_PORT=1`): 앱이 뜨고 상태는 `FAILED`/`UNREACHABLE`/`askflow.target-db.url`, 응답에 비밀번호 값 없음, `application.yml` 기본값(olist, askflow_reader, 비밀번호 환경 변수, 1000행·10초, 허용 테이블 비움).
+- `./gradlew :api:test`는 18개 모두 실패(`NotImplementedError`, 설정 없음)한다. `ktlintCheck`와 모든 컴파일은 통과한다.
+- 바꾼 파일: `api/src/main/kotlin/io/askflow/api/connection/*`(새 골격), `api/src/test/kotlin/io/askflow/api/connection/TargetDbPropertiesTest.kt`, `.../ConnectionStatusControllerTest.kt`, `api/src/test/kotlin/io/askflow/api/ApiApplicationConnectionFailureTests.kt`, `api/CLAUDE.md`(새 파일)
+- 다음 반복(1.8): web 테스트. 응답 형식은 `ConnectionStatusResponse`와 같게 `web/src/connection/types.ts`에 쓴다(`failure.reason`은 enum 이름).
 ---
