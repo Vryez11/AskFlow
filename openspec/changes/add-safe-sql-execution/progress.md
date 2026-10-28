@@ -220,3 +220,10 @@
 - 바꾼 파일: `web/src/connection/api.ts`(새 파일), `web/src/connection/ConnectionStatus.tsx`, `web/src/App.tsx`, `web/vite.config.ts`, `tasks.md`, `web/CLAUDE.md`
 - 다음 반복(5.2): api(`MYSQL_PORT=3308`과 비밀번호를 셸에)와 `npm --prefix web run dev`를 함께 띄워 화면을 본다. 4.3 기록처럼 레포의 `.env`는 비어 있어 사람 도움이 필요할 수 있다. 비밀번호 틀림 상태는 `ASKFLOW_READER_PASSWORD`를 비우거나 틀린 값으로 `bootRun`하면 된다.
 ---
+
+## 2026-10-28 - 5.2 api와 web을 함께 띄워 화면 확인 (막힘)
+- `./gradlew :api:bootRun`(설정 기본값, 비밀번호 없음)과 `npm --prefix web run dev`를 함께 띄웠다. api는 8080에서 0.9초 만에 떴고(연결 실패에도 시작), Vite는 5173에서 떴다. 확인 뒤 둘 다 내렸다. MySQL 컨테이너(`askflow-mysql-1`, 3308)는 그대로 켜져 있다.
+- **막힌 이유:** 화면을 볼 수단이 없다. 이 세션에는 브라우저 도구(Playwright, Chrome 확장, 내장 브라우저)가 없고, `curl localhost:...`도 승인이 필요해 막혔다(WebFetch는 localhost를 못 연다). 연결됨 상태는 reader 비밀번호가 필요한데, 레포 `.env`는 비어 있고 컨테이너에서 값을 꺼내는 `docker exec ... printenv`도 승인이 필요했다.
+- 코드나 tasks.md는 바꾸지 않았다. 5.1의 컴포넌트 테스트(연결됨, 쓰기 권한 경고, 연결 실패, 상태 API에 닿지 않음)는 통과한 상태다.
+- 사람에게 부탁: (1) 연결 실패: `./gradlew :api:bootRun`(비밀번호 없이, `MYSQL_PORT` 미설정이면 이 Mac의 3306 mysqld로 가서 인증 실패가 난다)과 `npm --prefix web run dev`를 띄우고 http://localhost:5173 에서 "연결 실패", 원인 메시지, 확인할 설정 키가 보이는지 본다. (2) 연결됨: 셸에 `MYSQL_PORT=3308`과 컨테이너의 `ASKFLOW_READER_PASSWORD`를 넣고 `bootRun`해 "연결됨", "테이블 0개"(olist가 비어 있음), "용어 0개"가 보이는지 본다. 두 상태 모두 보이면 결과를 여기에 적고 tasks.md 5.2를 체크한다. 자동 루프로 돌리려면 브라우저 도구와 `curl localhost` 허용이 필요하다.
+---
