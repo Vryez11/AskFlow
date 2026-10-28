@@ -27,7 +27,7 @@ fi
 
 PROMPT="$(sed "s/{{CHANGE_ID}}/$CHANGE_ID/g" "$SCRIPT_DIR/prompt.md")"
 cd "$ROOT_DIR"
-echo "Ralph 시작: $CHANGE_ID, 최대 $MAX_ITERATIONS번"
+echo "Ralph 시작: $CHANGE_ID, 최대 ${MAX_ITERATIONS}번"
 
 for i in $(seq 1 "$MAX_ITERATIONS"); do
   echo ""
