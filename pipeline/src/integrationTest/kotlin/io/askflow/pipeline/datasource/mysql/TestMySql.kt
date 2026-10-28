@@ -8,7 +8,7 @@ import java.time.Duration
 
 /**
  * 통합 테스트가 함께 쓰는 MySQL 8.4 (design 9장). 처음 쓸 때 한 번 띄우고 테스트용 스키마와 계정을 만든다.
- * Olist 대신 작은 스키마를 쓴다: orders, customers(개인정보 컬럼), numbers(1..5000).
+ * Olist 대신 작은 스키마를 쓴다: orders, customers(개인정보 컬럼), numbers(1..5000), 뷰 delivered_orders.
  */
 object TestMySql {
     const val SCHEMA = "olist"
@@ -16,9 +16,17 @@ object TestMySql {
     const val READER_PASSWORD = "reader-pw-7731"
     const val WRITER = "askflow_writer"
     const val WRITER_PASSWORD = "writer-pw-7731"
+    const val ADMIN = "askflow_admin"
+    const val ADMIN_PASSWORD = "admin-pw-7731"
     const val NUMBERS = 5000
 
+    /** reader가 접근할 수 없는 다른 스키마 */
+    const val FORBIDDEN_SCHEMA = "hr"
+
     val tables = listOf("orders", "customers", "numbers")
+
+    /** 허용 테이블을 비우면 테이블과 함께 허용되는 뷰 */
+    val views = listOf("delivered_orders")
     val piiColumns = listOf("customers.customer_zip_code_prefix", "customers.customer_unique_id")
 
     private val container: MySQLContainer by lazy {
@@ -30,7 +38,17 @@ object TestMySql {
 
     val jdbcUrl: String get() = urlOf(container)
 
-    private fun urlOf(container: MySQLContainer) = "jdbc:mysql://${container.host}:${container.getMappedPort(3306)}/$SCHEMA"
+    val host: String get() = container.host
+
+    val port: Int get() = container.getMappedPort(3306)
+
+    private fun urlOf(
+        container: MySQLContainer,
+        schema: String = SCHEMA,
+    ) = "jdbc:mysql://${container.host}:${container.getMappedPort(3306)}/$schema"
+
+    /** 같은 DB의 다른 스키마를 가리키는 접속 주소 */
+    fun jdbcUrlOf(schema: String): String = urlOf(container, schema)
 
     fun config(
         username: String = READER,
@@ -116,6 +134,11 @@ object TestMySql {
                     // 계정이 쓰기 권한을 가져도 세션이 막는지 볼 때 쓴다
                     "CREATE USER '$WRITER'@'%' IDENTIFIED BY '$WRITER_PASSWORD'",
                     "GRANT SELECT, INSERT, UPDATE, DELETE ON $SCHEMA.* TO '$WRITER'@'%'",
+                    // 전체 권한 경고를 볼 때 쓴다
+                    "CREATE USER '$ADMIN'@'%' IDENTIFIED BY '$ADMIN_PASSWORD'",
+                    "GRANT ALL PRIVILEGES ON *.* TO '$ADMIN'@'%'",
+                    "CREATE VIEW delivered_orders AS SELECT order_id, amount FROM orders WHERE order_status = 'delivered'",
+                    "CREATE DATABASE $FORBIDDEN_SCHEMA",
                 ).forEach { statement.execute(it.trimIndent()) }
             }
         }

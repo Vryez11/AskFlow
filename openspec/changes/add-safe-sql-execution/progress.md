@@ -12,7 +12,8 @@
 - `LlmSafeResult`는 생성자가 `internal`이라 `QueryResult.forLlm()`으로만 만든다.
 - 권한 해석은 `GrantParser(schema).parse(lines): GrantCheck(writePrivileges, warnings)`, 연결 실패 분류는 `ConnectionFailureClassifier(password).classify(error): ConnectionFailure`. 둘 다 `mysql` 패키지의 internal이다. 분류기는 HikariCP가 감싼 예외(`SQLTransientConnectionException`)의 원인 사슬을 따라가야 하고, 원인 없는 풀 대기 시간 초과는 접속 불가로 본다.
 - 버전: JSqlParser 5.3, HikariCP 7.0.2, Connector/J 9.7.0, Testcontainers 2.0.5(아티팩트 이름 `testcontainers-mysql`, `testcontainers-junit-jupiter`).
-- 통합 테스트는 `TestMySql`(mysql:8.4, 스키마 `olist`, 테이블 orders 6행·customers 4행·numbers 1..5000, 계정 `askflow_reader`(SELECT, SHOW VIEW)·`askflow_writer`(SELECT, INSERT, UPDATE, DELETE))를 쓴다. 이 로컬 환경에서는 Docker가 돌아 `:pipeline:integrationTest`가 실제로 컨테이너를 띄운다.
+- 통합 테스트는 `TestMySql`(mysql:8.4, 스키마 `olist`, 테이블 orders 6행·customers 4행·numbers 1..5000, 뷰 `delivered_orders`, 계정 `askflow_reader`(SELECT, SHOW VIEW)·`askflow_writer`(SELECT, INSERT, UPDATE, DELETE)·`askflow_admin`(ALL ON `*.*`), reader가 못 들어가는 스키마 `hr`)를 쓴다.
+- `ConnectionCheckIT`가 정한 것(3.5에서 맞춘다): 허용 테이블 비움이면 테이블 수에 뷰도 센다(4). 스키마 없음(1049)과 접근 못 하는 스키마(1044) 모두 `SCHEMA_UNAVAILABLE`. 없는 허용 테이블은 `message`에 없는 이름만 담는다. DB에 닿지 않음은 10초 안에 끝나야 한다. 실패 상태의 `toString()`에 비밀번호가 없어야 한다. "나중에 살아난 DB"는 같은 커넥터로 두 번 `checkConnection()`을 부른다(`initializationFailTimeout = -1` 필요). 이 로컬 환경에서는 Docker가 돌아 `:pipeline:integrationTest`가 실제로 컨테이너를 띄운다.
 - `MySqlConnectorIT`가 정한 오류 형식(3장에서 맞춘다): 시간 상한 `cause`에 `"1초"`, `checkPoints`에 `askflow.target-db.query-timeout`. 행 수 상한 `cause`에 상한 숫자(`"1000"`, 쉼표 없음), `checkPoints`에 `askflow.target-db.max-rows`. 연결 실패 `checkPoints` 중 하나에 `"연결 상태"`. DB 오류 `cause`에 MySQL 메시지 원문.
 - 읽기 전용 세션 테스트는 `MySqlConnector.createPool(config)`(internal)로 풀을 받아 writer 계정으로 INSERT를 보내고 오류 코드 1792를 기대한다. `createPool`은 `readOnly`·`autoCommit = false`·`connectionInitSql`을 모두 걸어야 한다.
 
@@ -55,4 +56,12 @@
 - `integrationTest` 컴파일을 main과 묶고(`associateWith`), `kotlin("test-junit5")`로 바꿨다. `MySqlConnector`의 companion을 internal로 열었다.
 - 바꾼 파일: `pipeline/build.gradle.kts`, `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/mysql/MySqlConnector.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/TestMySql.kt`, `.../mysql/MySqlConnectorIT.kt`, `pipeline/CLAUDE.md`
 - 다음 반복(1.6): `ConnectionCheckIT`는 `TestMySql`을 쓴다. 비밀번호 틀림·스키마 없음·허용 테이블 없음은 `TestMySql.config(...)`나 `.copy(...)`로 만들고, "나중에 살아난 DB"는 공용 컨테이너를 멈추지 말고 따로 컨테이너를 띄우거나 늦게 띄우는 방식이 필요하다. 전체 권한 경고용 계정은 아직 없으니 `TestMySql`에 더한다.
+---
+
+## 2026-10-28 - 1.6 연결 확인 시나리오를 ConnectionCheckIT로 옮김
+- `ConnectionCheckIT`(11개): 설정한 DB에 연결(테이블 수 3), 허용 테이블 비움(테이블+뷰 4), 비밀번호 틀림, DB에 닿지 않음(포트 1, 10초 안), 스키마 없음(1049)·접근 못 하는 스키마(1044), 없는 허용 테이블, 읽기 전용·쓰기 권한·전체 권한 계정, 나중에 살아난 DB.
+- `TestMySql`에 `askflow_admin` 계정, 뷰 `delivered_orders`, 스키마 `hr`, `host`·`port`·`jdbcUrlOf(schema)`를 더했다. "나중에 살아난 DB"는 새 `TcpForwarder`로 처음엔 닫힌 포트를 나중에 열어 공용 컨테이너로 잇는다.
+- 11개 모두 `NotImplementedError`로 실패하는 것을 확인했다. `:pipeline:test`, `MySqlConnectorIT`도 `NotImplementedError`만 있다.
+- 바꾼 파일: `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/ConnectionCheckIT.kt`, `.../mysql/TcpForwarder.kt`(새 파일), `.../mysql/TestMySql.kt`, `pipeline/CLAUDE.md`
+- 다음 반복(1.7): api 테스트. `api`에는 아직 actuator뿐이다. `TargetDbProperties`, `ConnectionStatusController`, `TermCountProvider`의 골격을 `TODO()`로 같이 만들어야 컴파일된다.
 ---
