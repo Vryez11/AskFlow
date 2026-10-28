@@ -227,3 +227,11 @@
 - 코드나 tasks.md는 바꾸지 않았다. 5.1의 컴포넌트 테스트(연결됨, 쓰기 권한 경고, 연결 실패, 상태 API에 닿지 않음)는 통과한 상태다.
 - 사람에게 부탁: (1) 연결 실패: `./gradlew :api:bootRun`(비밀번호 없이, `MYSQL_PORT` 미설정이면 이 Mac의 3306 mysqld로 가서 인증 실패가 난다)과 `npm --prefix web run dev`를 띄우고 http://localhost:5173 에서 "연결 실패", 원인 메시지, 확인할 설정 키가 보이는지 본다. (2) 연결됨: 셸에 `MYSQL_PORT=3308`과 컨테이너의 `ASKFLOW_READER_PASSWORD`를 넣고 `bootRun`해 "연결됨", "테이블 0개"(olist가 비어 있음), "용어 0개"가 보이는지 본다. 두 상태 모두 보이면 결과를 여기에 적고 tasks.md 5.2를 체크한다. 자동 루프로 돌리려면 브라우저 도구와 `curl localhost` 허용이 필요하다.
 ---
+
+## 2026-10-28 - 5.2 화면 확인 (사람 요청으로 대신 확인)
+- `.env`는 읽거나 고치지 않았다. 4.3 때 만든 레포 밖 값 파일을 셸에 올려 `bootRun`하고, `npm --prefix web run dev`를 함께 띄워 내장 브라우저로 http://localhost:5173 을 봤다.
+- 연결됨(`MYSQL_PORT=3308`과 reader 비밀번호): 홈에 "데이터 연결", "연결됨 · 테이블 0개 · 용어 0개"가 보였다(olist가 비어 있어 0개).
+- 연결 실패(`MYSQL_PORT=3308`, `ASKFLOW_READER_PASSWORD` 비움): 처음엔 "연결 상태를 확인하는 중입니다"가 잠깐 보이고, 이어 "연결 실패", "계정 이름이나 비밀번호가 맞지 않아 접속하지 못했습니다. (Access denied for user 'askflow_reader'@... (using password: NO))", "확인할 설정" 아래 `askflow.target-db.username`, `ASKFLOW_READER_PASSWORD`가 보였다. 비밀번호 값은 화면에 없다.
+- 확인 뒤 api와 Vite는 내렸다. MySQL 컨테이너(`askflow-mysql-1`, 3308)는 켜 두었다. tasks.md 5.2를 체크했다.
+- 다음(6장): 구현에 참여하지 않은 리뷰어로 검토(6.1)와 완료 조건 확인(6.2). Ralph 몫이 아니다.
+---
