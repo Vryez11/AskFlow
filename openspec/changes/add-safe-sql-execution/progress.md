@@ -274,3 +274,9 @@
 - 바꾼 파일: `pipeline/src/main/kotlin/io/askflow/pipeline/datasource/ExecutionError.kt`, `.../mysql/MySqlConnector.kt`, `pipeline/src/test/kotlin/io/askflow/pipeline/datasource/LlmSafeErrorTest.kt`, `pipeline/src/integrationTest/kotlin/io/askflow/pipeline/datasource/mysql/LlmSafeErrorIT.kt`, `pipeline/CLAUDE.md`, `tasks.md`
 - 다음: 6장 작업이 모두 끝났다. 7장(재검토와 완료 조건)은 Ralph 몫이 아니다.
 ---
+
+## 2026-10-28 - 7.1 독립 재검토 (2차)
+- 새 리뷰 서브에이전트가 `develop...HEAD`를 봤다. 1차 막음 세 건(6.1~6.3)은 모두 닫혔다(테스트 재실행과 코드로 확인). 테스트 `:pipeline:test` 94, `:pipeline:integrationTest` 35, `:api:test` 18, web 7 모두 통과.
+- 새 막음 1건: 뷰나 생성 컬럼이 개인정보 컬럼을 다른 이름으로 내보내면 해석 트리와 JDBC 메타데이터 모두 개인정보로 보지 못한다(메타데이터는 뷰 이름을 돌려준다). 로컬 MySQL 8.4에서 뷰 열과 생성 컬럼으로 원래 값이 나오는 것, `VIEW_DEFINITION`과 `GENERATION_EXPRESSION`을 SQL로 읽을 수 있는 것을 확인했다. 기존 요구사항(서브쿼리를 거친 열도 개인정보)에 어긋나 막음으로 두고, 스펙에 시나리오 세 개, design 7장에 "뷰와 생성 컬럼"을 더해 작업 6.4로 넣었다.
+- 제안 1건: `PiiLineage.isCount`가 창 함수 `COUNT(...) OVER`도 COUNT 예외로 본다. 값이 나가지 않아 안전하지만 주석("창 함수 COUNT는 따로 보지 않고 훑는다")과 어긋난다. 주석이나 동작을 맞추면 좋다.
+---
