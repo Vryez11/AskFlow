@@ -6,7 +6,7 @@ import io.askflow.pipeline.datasource.guard.piiColumnPairs
 
 /**
  * 해석 트리 판정([ItemPii])과 JDBC 메타데이터를 합쳐 결과 열마다 개인정보인지 정한다 (design 7장).
- * 둘 중 하나라도 개인정보라고 하면 가린다. 메타데이터의 원래 테이블이 뷰이거나 생성 컬럼이면 개인정보다.
+ * 둘 중 하나라도 개인정보라고 하면 가린다. 메타데이터의 원래 테이블이 뷰이거나, 생성 컬럼이거나, 읽은 컬럼 목록에 없으면 개인정보다.
  */
 internal class PiiColumnMarker(
     /** "table.column" 형식. 대소문자를 무시하고 비교한다 */
@@ -36,7 +36,10 @@ internal class PiiColumnMarker(
     }
 
     private fun ColumnOrigin.isPii(): Boolean =
-        (table.lowercase() to column.lowercase()) in pii || objects.isView(table) || objects.isGenerated(table, column)
+        (table.lowercase() to column.lowercase()) in pii ||
+            objects.isView(table) ||
+            objects.isGenerated(table, column) ||
+            !objects.isKnownColumn(table, column)
 
     /** 항목 판정을 결과 열 수만큼 펼친다. 맞출 수 없으면 null */
     private fun alignToColumns(

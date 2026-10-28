@@ -5,6 +5,7 @@ import io.askflow.pipeline.datasource.guard.JsqlTree.isLeaf
 import io.askflow.pipeline.datasource.guard.JsqlTree.isNode
 import io.askflow.pipeline.datasource.guard.JsqlTree.unquote
 import net.sf.jsqlparser.expression.Function
+import net.sf.jsqlparser.expression.UserVariable
 import net.sf.jsqlparser.schema.Column
 import net.sf.jsqlparser.schema.Table
 import net.sf.jsqlparser.statement.Statement
@@ -14,7 +15,7 @@ import net.sf.jsqlparser.statement.select.WithItem
 import java.util.IdentityHashMap
 
 /**
- * 해석 트리에서 읽는 테이블과 부르는 함수를 모은다 (design 3장).
+ * 해석 트리에서 읽는 테이블, 부르는 함수, 쓰는 사용자 변수를 모은다 (design 3장).
  *
  * JSqlParser의 visitor(`TablesNamesFinder`, 어댑터들)는 비교식 안 서브쿼리 같은 곳을 건너뛴다.
  * 놓친 곳이 곧 검사를 피해 가는 길이 되므로, 노드의 필드를 리플렉션으로 모두 따라가 빠짐없이 모은다.
@@ -33,6 +34,8 @@ internal object ReferenceCollector {
     data class References(
         val tables: List<TableRef>,
         val functions: List<String>,
+        /** 읽거나 대입하는 사용자 변수(`@x`). 시스템 변수(`@@x`)는 넣지 않는다 */
+        val userVariables: List<String>,
         /** SELECT 안에 들어 있는 SELECT가 아닌 문(예: CTE 본문의 DELETE). 있으면 그 클래스 이름 */
         val nestedNonSelect: String?,
     )
@@ -42,10 +45,11 @@ internal object ReferenceCollector {
     private class Walker {
         private val tables = mutableListOf<TableRef>()
         private val functions = mutableListOf<String>()
+        private val userVariables = mutableListOf<String>()
         private var nestedNonSelect: String? = null
         private val visited = IdentityHashMap<Any, Unit>()
 
-        fun result() = References(tables, functions, nestedNonSelect)
+        fun result() = References(tables, functions, userVariables, nestedNonSelect)
 
         /** [cteNames]: 지금 위치에서 보이는 CTE 이름 */
         fun walk(
@@ -69,6 +73,7 @@ internal object ReferenceCollector {
                     functions += node.multipartName.joinToString(".") { unquote(it) }
                     walkFields(node, cteNames)
                 }
+                is UserVariable -> if (!node.isDoubleAdd) userVariables += node.toString()
                 else -> if (isNode(node)) walkFields(node, cteNames)
             }
         }

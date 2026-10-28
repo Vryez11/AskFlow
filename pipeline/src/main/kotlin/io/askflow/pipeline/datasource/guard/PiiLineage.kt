@@ -2,10 +2,11 @@ package io.askflow.pipeline.datasource.guard
 
 import io.askflow.pipeline.datasource.guard.JsqlTree.fieldsOf
 import io.askflow.pipeline.datasource.guard.JsqlTree.isLeaf
-import io.askflow.pipeline.datasource.guard.JsqlTree.isNode
 import io.askflow.pipeline.datasource.guard.JsqlTree.unquote
 import net.sf.jsqlparser.expression.Alias
+import net.sf.jsqlparser.expression.AnalyticExpression
 import net.sf.jsqlparser.expression.Function
+import net.sf.jsqlparser.expression.WindowDefinition
 import net.sf.jsqlparser.parser.CCJSqlParserUtil
 import net.sf.jsqlparser.schema.Column
 import net.sf.jsqlparser.schema.Table
@@ -21,10 +22,10 @@ import net.sf.jsqlparser.statement.select.SetOperationList
 import java.util.IdentityHashMap
 
 /**
- * 해석 트리로 최상위 SELECT 항목마다 개인정보 컬럼에서 나온 열인지 추적한다 (design 7장).
- * 별칭으로 테이블까지 풀고, 서브쿼리·CTE는 그 안의 SELECT 항목으로 이어 간다.
- * COUNT 안에서만 쓴 경우만 예외이고, 풀 수 없으면 개인정보로 본다(fail-closed).
- * 뷰의 모든 열과 생성 컬럼은 개인정보 컬럼으로, 저장 함수나 스키마를 붙인 함수를 부른 항목은 개인정보로 본다.
+ * 해석 트리로 최상위 SELECT 항목마다 안전이 확인된 열인지 추적한다 (design 7장 "판정 방향").
+ * 안전하려면 모든 잎이 리터럴이거나 확인된 일반 컬럼이고, 모든 함수와 노드가 [BuiltinAllowList]에 있어야 한다.
+ * 별칭으로 테이블까지 풀고, 서브쿼리·CTE는 그 안의 SELECT 항목으로 이어 간다. COUNT 안의 재료는 따지지 않는다.
+ * 뷰의 모든 열, 생성 컬럼, 읽은 컬럼 목록에 없는 이름, 저장 함수나 스키마를 붙인 함수를 부른 항목은 개인정보로 본다.
  *
  * 돌려주는 항목 수는 결과 열 수와 다를 수 있다(`*`, UNION 가지에 `*`가 있을 때, VALUES 같은 문).
  * 결과 열에 맞추지 못하면 모두 가린다.
@@ -73,14 +74,13 @@ class PiiLineage(
         /** [column]이 개인정보면 true, 아니면 false, 이 출처에 없는 이름이면 null */
         fun pii(column: String): Boolean?
 
-        /** 테이블이나 뷰. 뷰면 모든 열이 개인정보다 */
+        /** 테이블이나 뷰. 뷰면 모든 열이 개인정보다. [columnPii]는 읽은 컬럼 목록에 없는 이름이면 null */
         class BaseTable(
             override val name: String,
             val isView: Boolean,
-            private val isPiiColumn: (String) -> Boolean,
+            private val columnPii: (String) -> Boolean?,
         ) : Source {
-            // 테이블의 컬럼 목록은 모르니 어떤 이름이든 있을 수 있다고 본다
-            override fun pii(column: String): Boolean = isView || isPiiColumn(column)
+            override fun pii(column: String): Boolean? = if (isView) true else columnPii(column)
         }
 
         class Derived(
@@ -166,7 +166,7 @@ class PiiLineage(
                 }
                 is AllColumns ->
                     if (expression.javaClass == AllColumns::class.java) Output.Star(sources) else Output.Opaque
-                else -> Output.Named(itemName(item), ExpressionWalker(scope, ctes).isPii(expression))
+                else -> Output.Named(itemName(item), ExpressionWalker(scope, ctes, select.windowDefinitions.orEmpty()).isPii(expression))
             }
         }
     }
@@ -187,7 +187,11 @@ class PiiLineage(
                 } else {
                     listOf(
                         Source.BaseTable(sourceName, objects.isView(name)) { column ->
-                            (name.lowercase() to column.lowercase()) in piiColumns || objects.isGenerated(name, column)
+                            if (objects.isKnownColumn(name, column)) {
+                                (name.lowercase() to column.lowercase()) in piiColumns || objects.isGenerated(name, column)
+                            } else {
+                                null
+                            }
                         },
                     )
                 }
@@ -241,12 +245,14 @@ class PiiLineage(
     ): Source? = scope.chain.firstNotNullOfOrNull { s -> s.sources.firstOrNull { it.name.equals(name, ignoreCase = true) } }
 
     /**
-     * SELECT 항목 식 안을 모두 훑어, COUNT 밖에서 개인정보 컬럼을 참조하는지 본다.
+     * SELECT 항목 식 안을 모두 훑어, 안전이 확인되지 않은 것이 하나라도 있으면 개인정보로 본다.
      * visitor는 노드를 놓칠 수 있어 [ReferenceCollector]처럼 필드를 리플렉션으로 따라간다.
+     * [windows]는 이 SELECT의 `WINDOW` 절이다. `OVER w`의 정의는 창 함수 노드에 붙지 않아 따로 찾는다.
      */
     private inner class ExpressionWalker(
         private val scope: Scope,
         private val ctes: Map<String, List<Output>>,
+        private val windows: List<WindowDefinition>,
     ) {
         private var pii = false
         private val visited = IdentityHashMap<Any, Unit>()
@@ -263,33 +269,58 @@ class PiiLineage(
                 is Map<*, *> -> node.values.forEach(::walk)
                 is Array<*> -> node.forEach(::walk)
                 is Column -> pii = isPiiColumn(node)
-                is AllColumns -> pii = true
-                is Function ->
-                    when {
-                        isRoutine(node) -> pii = true
-                        !isCount(node) -> walkFields(node)
-                    }
+                is Function -> walkFunction(node)
+                is AnalyticExpression -> walkAnalytic(node)
                 is Select -> pii = outputs(node, scope, ctes).any { it !is Output.Named || it.pii }
-                else -> if (isNode(node)) walkFields(node)
+                else ->
+                    when {
+                        BuiltinAllowList.isLiteral(node) -> Unit
+                        BuiltinAllowList.isCombiner(node) -> walkFields(node)
+                        // 처음 보는 노드(변수, `*`, 모르는 문법)는 무엇을 돌려줄지 모르니 안전하지 않다
+                        else -> pii = true
+                    }
             }
         }
 
-        private fun walkFields(node: Any) {
-            fieldsOf(node.javaClass).forEach { walk(it.get(node)) }
+        private fun walkFields(
+            node: Any,
+            skip: String? = null,
+        ) {
+            fieldsOf(node.javaClass).forEach { if (it.name != skip) walk(it.get(node)) }
         }
 
-        // COUNT는 개수만 돌려주니 안에 무엇을 넣어도 값이 나가지 않는다. 창 함수 COUNT는 따로 보지 않고 훑는다
-        private fun isCount(function: Function): Boolean =
-            function.multipartName.size == 1 && unquote(function.name).equals("COUNT", ignoreCase = true)
-
         // 저장 함수는 인자와 상관없이 어떤 값이든 읽어 돌려줄 수 있다. 스키마를 붙인 함수는 어느 스키마 것인지 따지지 않는다
-        private fun isRoutine(function: Function): Boolean =
-            function.multipartName.size > 1 || objects.isStoredFunction(unquote(function.multipartName.single()))
+        private fun walkFunction(function: Function) {
+            val parts = function.multipartName.map(::unquote)
+            val name = parts.singleOrNull()
+            when {
+                name == null || objects.isStoredFunction(name) || !BuiltinAllowList.isSafeFunction(name) -> pii = true
+                // COUNT는 개수만 돌려주니 안에 무엇을 넣어도 값이 나가지 않는다
+                name.equals("COUNT", ignoreCase = true) -> Unit
+                else -> {
+                    val first = function.parameters?.firstOrNull()
+                    if (BuiltinAllowList.isUnitArgument(name, first)) visited[first] = Unit
+                    walkFields(function)
+                }
+            }
+        }
+
+        // 창 함수 COUNT도 센 재료는 따지지 않지만, 창을 나누고 정렬하는 식은 훑는다
+        private fun walkAnalytic(expression: AnalyticExpression) {
+            if (!BuiltinAllowList.isSafeFunction(expression.name)) {
+                pii = true
+                return
+            }
+            walkFields(expression, skip = if (expression.name.equals("COUNT", ignoreCase = true)) "expression" else null)
+            val windowName = expression.windowName ?: return
+            val window = windows.firstOrNull { it.windowName.equals(windowName, ignoreCase = true) }
+            if (window == null) pii = true else walk(window)
+        }
 
         /**
          * 테이블을 적었으면 바깥 범위까지 그 이름의 출처 모두에서, 안 적었으면 보이는 모든 출처에서 찾는다.
-         * MySQL은 안쪽 테이블에 없는 컬럼을 바깥의 같은 별칭에서 찾는데, 기본 테이블의 컬럼 목록은 모르니
-         * 같은 이름 출처 중 하나라도 개인정보면 가린다. 못 찾으면 개인정보로 본다.
+         * MySQL은 안쪽 테이블에 없는 컬럼을 바깥의 같은 별칭에서 찾으니, MySQL이 어느 쪽을 고를지 따지지 않고
+         * 그 이름을 가진 출처 중 하나라도 개인정보면 가린다. 어느 출처에서도 확인하지 못하면 개인정보로 본다.
          */
         private fun isPiiColumn(column: Column): Boolean {
             val name = unquote(column.columnName)

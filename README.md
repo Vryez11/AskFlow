@@ -15,6 +15,8 @@ api는 `askflow.target-db` 설정으로 분석 대상 DB에 읽기 전용으로 
 | `max-rows` | `1000` | 결과 행 수 상한 |
 | `query-timeout` | `10s` | 실행 시간 상한 |
 
+LLM에는 안전이 확인된 열만 보낸다. 뷰에서 온 열, 생성 컬럼, 내장 함수 허용 목록 밖의 함수를 쓴 열은 `pii-columns`와 상관없이 빠진다. 다만 기본값이 `DEFAULT (식)`인 컬럼은 DB가 일반 컬럼으로 보여 주므로 걸러지지 않는다. 개인정보 컬럼을 복사해 두는 기본값 컬럼이 있으면 그 컬럼도 `pii-columns`에 적는다.
+
 `./gradlew :api:bootRun`은 `.env`를 읽지 않는다. 셸에 `ASKFLOW_READER_PASSWORD`를 넣고 띄운다. 비밀번호가 없거나 틀려도 앱은 뜨고, `GET /api/connection/status`와 홈의 연결 상태가 원인과 확인할 설정을 보여 준다.
 
 ### 파일럿 설정 덮어쓰기

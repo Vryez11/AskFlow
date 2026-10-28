@@ -141,15 +141,16 @@ class MySqlConnector internal constructor(
         )
 
     /**
-     * 정의를 따라가지 않고 개인정보로 볼 뷰, 생성 컬럼, 저장 함수를 한 번의 조회로 읽는다 (design 7장).
+     * 정의를 따라가지 않고 개인정보로 볼 뷰, 생성 컬럼, 저장 함수와 확인된 컬럼 목록을 한 번의 조회로 읽는다 (design 7장).
      * 접속 주소의 기본 스키마가 설정 스키마와 달라도 테이블 이름만 쓴 SQL은 기본 스키마로 가니 둘 다 읽는다.
      */
     private fun readSchemaObjects(connection: Connection): PiiSchemaObjects {
         val views = mutableListOf<String>()
         val generated = mutableListOf<Pair<String, String>>()
         val functions = mutableListOf<String>()
+        val columns = mutableListOf<Pair<String, String>>()
         connection.prepareStatement(SCHEMA_OBJECTS_QUERY).use { statement ->
-            repeat(3) { statement.setString(it + 1, config.schema) }
+            repeat(4) { statement.setString(it + 1, config.schema) }
             statement.executeQuery().use { rs ->
                 while (rs.next()) {
                     val name = rs.getString(2).orEmpty()
@@ -157,11 +158,12 @@ class MySqlConnector internal constructor(
                         "VIEW" -> views += name
                         "GENERATED" -> generated += name to rs.getString(3).orEmpty()
                         "FUNCTION" -> functions += name
+                        "COLUMN" -> columns += name to rs.getString(3).orEmpty()
                     }
                 }
             }
         }
-        return PiiSchemaObjects(views, generated, functions)
+        return PiiSchemaObjects(views, generated, functions, columns)
     }
 
     private fun run(sql: String): ExecutionOutcome =
@@ -297,14 +299,17 @@ class MySqlConnector internal constructor(
         // 테이블과 뷰 모두
         private const val TABLES_QUERY = "SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = ?"
 
-        // 뷰는 정의를 볼 권한(SHOW VIEW)이 없어도 보이도록 VIEWS가 아니라 TABLES에서 읽는다
+        // 뷰는 정의를 볼 권한(SHOW VIEW)이 없어도 보이도록 VIEWS가 아니라 TABLES에서 읽는다.
+        // 컬럼은 이 계정이 볼 수 있는 것만 나온다. 검사기가 허용 테이블만 통과시키니 스키마 전체를 읽어도 된다
         private const val SCHEMA_OBJECTS_QUERY =
             "SELECT 'VIEW', TABLE_NAME, NULL FROM information_schema.TABLES " +
                 "WHERE TABLE_SCHEMA IN (?, DATABASE()) AND TABLE_TYPE = 'VIEW' " +
                 "UNION ALL SELECT 'GENERATED', TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS " +
                 "WHERE TABLE_SCHEMA IN (?, DATABASE()) AND GENERATION_EXPRESSION <> '' " +
                 "UNION ALL SELECT 'FUNCTION', ROUTINE_NAME, NULL FROM information_schema.ROUTINES " +
-                "WHERE ROUTINE_SCHEMA IN (?, DATABASE()) AND ROUTINE_TYPE = 'FUNCTION'"
+                "WHERE ROUTINE_SCHEMA IN (?, DATABASE()) AND ROUTINE_TYPE = 'FUNCTION' " +
+                "UNION ALL SELECT 'COLUMN', TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS " +
+                "WHERE TABLE_SCHEMA IN (?, DATABASE())"
 
         // 통합 테스트가 커넥터와 같은 세션 설정으로 검사 없이 문장을 보내 볼 때도 쓴다
         fun createPool(config: TargetDbConfig): DataSource =

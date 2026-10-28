@@ -13,7 +13,7 @@ import net.sf.jsqlparser.statement.select.SetOperationList
 
 /**
  * 실행 전 SQL 검사 (design 3장). 검사를 못 하면 막는다(fail-closed).
- * 순서: 실행 주석·힌트 → 해석 → 문 개수와 종류 → 테이블 → 함수 → LIMIT 다시 쓰기 → 다시 쓴 문장의 힌트.
+ * 순서: 실행 주석·힌트 → 해석 → 문 개수와 종류 → 테이블 → 함수 → 사용자 변수 → LIMIT 다시 쓰기 → 다시 쓴 문장의 힌트.
  */
 class SqlGuard(
     private val schema: String,
@@ -64,6 +64,10 @@ class SqlGuard(
         references.functions.firstOrNull { it.substringAfterLast('.').uppercase() in DENIED_FUNCTIONS }?.let {
             return reject(ExecutionErrorKind.FUNCTION_NOT_ALLOWED, "실행을 허용하지 않은 함수입니다.", it)
         }
+        // 풀이 같은 세션을 다시 쓰면 변수 값이 다음 실행으로 넘어간다
+        references.userVariables.firstOrNull()?.let {
+            return reject(ExecutionErrorKind.FUNCTION_NOT_ALLOWED, "사용자 변수는 쓸 수 없습니다.", "사용자 변수 $it")
+        }
 
         capLimit(statement)
         val rewritten = statement.toString()
@@ -97,9 +101,10 @@ class SqlGuard(
         return statement
     }
 
+    // 스키마는 대소문자까지 같아야 한다. 대소문자만 다른 이름은 다른 스키마일 수 있고, 실행마다 읽는 스키마 목록과도 어긋난다
     private fun isAllowed(table: ReferenceCollector.TableRef): Boolean =
         !table.hasCatalog &&
-            (table.schema == null || table.schema.equals(schema, ignoreCase = true)) &&
+            (table.schema == null || table.schema == schema) &&
             table.name.lowercase() in allowedLowercase
 
     private fun parseCause(e: JSQLParserException): String = (e.cause?.message ?: e.message ?: "해석 오류").lineSequence().first()
@@ -113,8 +118,9 @@ class SqlGuard(
     private companion object {
         val CHECK_POINTS = listOf("실행하려던 SQL")
 
-        /** 잠그거나, 오래 붙잡거나, 서버 파일을 읽는 함수 */
-        val DENIED_FUNCTIONS = setOf("SLEEP", "BENCHMARK", "LOAD_FILE", "GET_LOCK", "RELEASE_LOCK", "RELEASE_ALL_LOCKS")
+        /** 잠그거나, 오래 붙잡거나, 서버 파일을 읽거나, 세션에 값을 남기는 함수 */
+        val DENIED_FUNCTIONS =
+            setOf("SLEEP", "BENCHMARK", "LOAD_FILE", "GET_LOCK", "RELEASE_LOCK", "RELEASE_ALL_LOCKS", "LAST_INSERT_ID")
     }
 }
 
